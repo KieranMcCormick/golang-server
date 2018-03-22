@@ -4,7 +4,7 @@ package main
 
 import (
 	"fmt"
-	"io"
+	"io/ioutil"
 	"os"
 )
 
@@ -48,33 +48,14 @@ func appendFile(path, message string) {
 	}
 }
 
-func readFile(path string) {
-	file, err := os.OpenFile(path, os.O_RDWR, 0644)
-	if isError(err) {
-		return
-	}
-	defer file.Close()
-
-	fi, err := file.Stat()
+func readFile(path string) []byte {
+	// read whole file into memory from FILENAME
+	data, err := ioutil.ReadFile(path)
 	if err != nil {
-		return
+		panic(err)
 	}
-
-	fmt.Printf("The file is %d bytes long\n", fi.Size())
-	text := make([]byte, fi.Size())
-	for {
-		_, err = file.Read(text)
-
-		if err == io.EOF {
-			break
-		}
-
-		if err != nil && err != io.EOF {
-			isError(err)
-			break
-		}
-	}
-	fmt.Println(string(text))
+	fmt.Print(string(data))
+	return data
 }
 
 func deleteFile(path string) {

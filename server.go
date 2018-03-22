@@ -1,33 +1,21 @@
 package main
 
 import (
-	"bufio"
+	"flag"
 	"fmt"
 	"net"
 )
 
-type request struct {
-	method      string
-	transtionID int
-	sequenceNum int
-	data        []byte
-	filename    string
-}
-
-type response struct {
-	method      string
-	transtionID int
-	sequenceNum int
-	errorCode   int
-	length      int
-	reason      string
+func init() {
+	flag.StringVar(&IP, "ip", "127.0.0.1", "IP address")
+	flag.StringVar(&PORT, "p", "7896", "Port Number")
+	flag.StringVar(&DIRECTORY, "d", "./", "Directory")
+	TIMEOUT = 6000
 }
 
 func main() {
-	const TimeOut = 6000
-	const Port = ":7896"
-
-	ln, err := net.Listen("tcp", Port)
+	portNum := ":" + PORT
+	ln, err := net.Listen("tcp", portNum)
 	if err != nil {
 		// handle error
 		fmt.Println(err)
@@ -47,28 +35,6 @@ func main() {
 
 // worker
 func handleConnection(conn net.Conn) {
-
 	parsePacket(conn)
-
 	conn.Close()
-}
-
-// helper to parse to stuff
-// returns METHOD, TRANSACTION NUMBER,
-func parsePacket(conn net.Conn) request {
-	var s string
-	r := bufio.NewReader(conn)
-	for {
-		message, err := r.ReadString('\n')
-		if err != nil {
-			break
-		}
-		s += string(message)
-	}
-	fmt.Println(s)
-	return request{
-		method:      "WRITE",
-		transtionID: 123,
-		sequenceNum: 1,
-	}
 }

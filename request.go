@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -36,9 +35,7 @@ func sendErrorIfItExist(conn net.Conn, err error) bool {
 
 func parseHeader(header string) (request, error) {
 	method := ""
-	tid := 0
-	seqNum := 0
-	length := 0
+	var tid, seqNum, length int
 	s := strings.Split(header, " ")
 	if len(s) >= 1 {
 		method = s[0]
@@ -98,6 +95,7 @@ func parsePacket(conn net.Conn) (request, error) {
 		req = handleWrite(req, r)
 	case "READ":
 		req = handleRead(req, r)
+		conn.Write([]byte(string(req.data)))
 	case "COMMIT":
 		req = handleCommit(req)
 	case "ABORT":
@@ -124,6 +122,13 @@ func handleWrite(req request, r *bufio.Reader) request {
 	return req
 }
 
+func TrimSuffix(s, suffix string) string {
+	if strings.HasSuffix(s, suffix) {
+		s = s[:len(s)-len(suffix)]
+	}
+	return s
+}
+
 func handleRead(req request, r *bufio.Reader) request {
 	// reads the empty line
 	_, err := r.ReadString('\n')
@@ -134,11 +139,11 @@ func handleRead(req request, r *bufio.Reader) request {
 	if err != nil {
 		return request{}
 	}
-	req.data = []byte(filename)
+	filename = TrimSuffix(filename, "\n")
+	absPath := "./" + filename
 
-	absPath, _ := filepath.Abs(DIRECTORY + filename)
 	fmt.Println(absPath)
-	readFile(absPath)
+	req.data = readFile(absPath)
 	return req
 }
 

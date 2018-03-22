@@ -48,7 +48,7 @@ func appendFile(path, message string) {
 	}
 }
 
-func readFile(path string) {
+func readFile(path string) []byte {
 	// read whole file into memory from FILENAME
 	// data, err := ioutil.ReadFile(path)
 	// if err != nil {
@@ -84,6 +84,7 @@ func readFile(path string) {
 		}
 	}
 	fmt.Println(string(text))
+	return text
 }
 
 func deleteFile(path string) {

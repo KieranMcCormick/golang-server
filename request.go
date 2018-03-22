@@ -15,6 +15,7 @@ type request struct {
 	contentLength int
 	data          []byte
 	filename      string
+	address       string
 }
 
 type response struct {
@@ -33,7 +34,7 @@ func sendErrorIfItExist(conn net.Conn, err error) bool {
 	return false
 }
 
-func parseHeader(header string) (request, error) {
+func parseHeader(header string, conn net.Conn) (request, error) {
 	method := ""
 	var tid, seqNum, length int
 	s := strings.Split(header, " ")
@@ -73,6 +74,7 @@ func parseHeader(header string) (request, error) {
 		transactionID: tid,
 		sequenceNum:   seqNum,
 		contentLength: length,
+		address:       conn.RemoteAddr().String(),
 	}, nil
 }
 
@@ -85,17 +87,24 @@ func parsePacket(conn net.Conn) (request, error) {
 	if err != nil {
 		return request{}, nil
 	}
-	req, err = parseHeader(header)
+	req, err = parseHeader(header, conn)
 	if err != nil {
 		return request{}, nil
 	}
 
 	switch req.method {
+	case "NEW_TXN ":
+		req = handleNewTransaction(req)
 	case "WRITE":
-		req = handleWrite(req, r)
+		req = handleWrite(req, r, conn)
 	case "READ":
 		req = handleRead(req, r)
-		conn.Write(req.data)
+		if reconn, err := net.Dial("tcp", req.address); err == nil {
+			reconn.Write(req.data)
+		} else {
+			fmt.Println(err)
+		}
+		//conn.Write(req.data)
 	case "COMMIT":
 		req = handleCommit(req)
 	case "ABORT":
@@ -107,8 +116,13 @@ func parsePacket(conn net.Conn) (request, error) {
 	return req, nil
 }
 
-func handleWrite(req request, r *bufio.Reader) request {
+func handleNewTransaction(req request) request {
+	return req
+}
+
+func handleWrite(req request, r *bufio.Reader, conn net.Conn) request {
 	// reads the empty line
+	//defer logWrite()
 	_, err := r.ReadString('\n')
 	if err != nil {
 		return request{}

@@ -1,27 +1,9 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
 	"net"
 )
-
-type request struct {
-	method      string
-	transtionID int
-	sequenceNum int
-	data        []byte
-	filename    string
-}
-
-type response struct {
-	method      string
-	transtionID int
-	sequenceNum int
-	errorCode   int
-	length      int
-	reason      string
-}
 
 func main() {
 	const TimeOut = 6000
@@ -47,28 +29,6 @@ func main() {
 
 // worker
 func handleConnection(conn net.Conn) {
-
 	parsePacket(conn)
-
 	conn.Close()
-}
-
-// helper to parse to stuff
-// returns METHOD, TRANSACTION NUMBER,
-func parsePacket(conn net.Conn) request {
-	var s string
-	r := bufio.NewReader(conn)
-	for {
-		message, err := r.ReadString('\n')
-		if err != nil {
-			break
-		}
-		s += string(message)
-	}
-	fmt.Println(s)
-	return request{
-		method:      "WRITE",
-		transtionID: 123,
-		sequenceNum: 1,
-	}
 }

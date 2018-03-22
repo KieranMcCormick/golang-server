@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -15,7 +16,6 @@ type request struct {
 	contentLength int
 	data          []byte
 	filename      string
-	address       string
 }
 
 type response struct {
@@ -34,7 +34,7 @@ func sendErrorIfItExist(conn net.Conn, err error) bool {
 	return false
 }
 
-func parseHeader(header string, conn net.Conn) (request, error) {
+func parseHeader(header string) (request, error) {
 	method := ""
 	var tid, seqNum, length int
 	s := strings.Split(header, " ")
@@ -74,7 +74,6 @@ func parseHeader(header string, conn net.Conn) (request, error) {
 		transactionID: tid,
 		sequenceNum:   seqNum,
 		contentLength: length,
-		address:       conn.RemoteAddr().String(),
 	}, nil
 }
 
@@ -87,7 +86,7 @@ func parsePacket(conn net.Conn) (request, error) {
 	if err != nil {
 		return request{}, nil
 	}
-	req, err = parseHeader(header, conn)
+	req, err = parseHeader(header)
 	if err != nil {
 		return request{}, nil
 	}
@@ -96,15 +95,10 @@ func parsePacket(conn net.Conn) (request, error) {
 	case "NEW_TXN ":
 		req = handleNewTransaction(req)
 	case "WRITE":
-		req = handleWrite(req, r, conn)
+		req = handleWrite(req, r)
 	case "READ":
 		req = handleRead(req, r)
-		if reconn, err := net.Dial("tcp", req.address); err == nil {
-			reconn.Write(req.data)
-		} else {
-			fmt.Println(err)
-		}
-		//conn.Write(req.data)
+		conn.Write(req.data)
 	case "COMMIT":
 		req = handleCommit(req)
 	case "ABORT":
@@ -120,9 +114,8 @@ func handleNewTransaction(req request) request {
 	return req
 }
 
-func handleWrite(req request, r *bufio.Reader, conn net.Conn) request {
+func handleWrite(req request, r *bufio.Reader) request {
 	// reads the empty line
-	//defer logWrite()
 	_, err := r.ReadString('\n')
 	if err != nil {
 		return request{}
@@ -136,7 +129,7 @@ func handleWrite(req request, r *bufio.Reader, conn net.Conn) request {
 	return req
 }
 
-func TrimSuffix(s, suffix string) string {
+func trimSuffix(s, suffix string) string {
 	if strings.HasSuffix(s, suffix) {
 		s = s[:len(s)-len(suffix)]
 	}
@@ -153,8 +146,8 @@ func handleRead(req request, r *bufio.Reader) request {
 	if err != nil {
 		return request{}
 	}
-	filename = TrimSuffix(filename, "\n")
-	absPath := "./" + filename
+	filename = trimSuffix(filename, "\n")
+	absPath, _ := filepath.Abs(DIRECTORY + filename)
 
 	fmt.Println(absPath)
 	req.data = readFile(absPath)

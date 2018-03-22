@@ -6,7 +6,9 @@ import (
 	"sync"
 )
 
-var logLocks map[string]sync.RWMutex
+func recoverLogLocks() map[string]sync.RWMutex {
+	return make(map[string]sync.RWMutex)
+}
 
 func logNewTransaction(file string) {
 	if lock, ok := logLocks[file]; ok {

@@ -95,7 +95,7 @@ func parsePacket(conn net.Conn) (request, error) {
 		req = handleWrite(req, r)
 	case "READ":
 		req = handleRead(req, r)
-		conn.Write([]byte(string(req.data)))
+		conn.Write(req.data)
 	case "COMMIT":
 		req = handleCommit(req)
 	case "ABORT":

@@ -7,8 +7,8 @@ import (
 )
 
 func init() {
-	flag.StringVar(&IP, "IP address", "127.0.0.1", "IP address")
-	flag.StringVar(&PORT, "Port", "7896", "Port Number")
+	flag.StringVar(&IP, "ip", "127.0.0.1", "IP address")
+	flag.StringVar(&PORT, "p", "7896", "Port Number")
 	flag.StringVar(&DIRECTORY, "d", "./", "Directory")
 	TIMEOUT = 6000
 }

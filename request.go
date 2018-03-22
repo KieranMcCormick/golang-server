@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -128,7 +129,7 @@ func handleWrite(req request, r *bufio.Reader) request {
 	return req
 }
 
-func TrimSuffix(s, suffix string) string {
+func trimSuffix(s, suffix string) string {
 	if strings.HasSuffix(s, suffix) {
 		s = s[:len(s)-len(suffix)]
 	}
@@ -145,8 +146,8 @@ func handleRead(req request, r *bufio.Reader) request {
 	if err != nil {
 		return request{}
 	}
-	filename = TrimSuffix(filename, "\n")
-	absPath := "./" + filename
+	filename = trimSuffix(filename, "\n")
+	absPath, _ := filepath.Abs(DIRECTORY + filename)
 
 	fmt.Println(absPath)
 	req.data = readFile(absPath)

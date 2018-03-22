@@ -136,8 +136,8 @@ func handleRead(req request, r *bufio.Reader) request {
 	}
 	req.data = []byte(filename)
 
-	// TODO: need to get the relative path base on the server directory
-	absPath, _ := filepath.Abs("./" + filename)
+	absPath, _ := filepath.Abs(DIRECTORY + filename)
+	fmt.Println(absPath)
 	readFile(absPath)
 	return req
 }

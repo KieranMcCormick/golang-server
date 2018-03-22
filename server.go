@@ -1,15 +1,21 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"net"
 )
 
-func main() {
-	const TimeOut = 6000
-	const Port = ":7896"
+func init() {
+	flag.StringVar(&IP, "IP address", "127.0.0.1", "IP address")
+	flag.StringVar(&PORT, "Port", "7896", "Port Number")
+	flag.StringVar(&DIRECTORY, "d", "./", "Directory")
+	TIMEOUT = 6000
+}
 
-	ln, err := net.Listen("tcp", Port)
+func main() {
+	portNum := ":" + PORT
+	ln, err := net.Listen("tcp", portNum)
 	if err != nil {
 		// handle error
 		fmt.Println(err)

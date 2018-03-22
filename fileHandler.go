@@ -4,7 +4,7 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
+	"io"
 	"os"
 )
 
@@ -49,37 +49,41 @@ func appendFile(path, message string) {
 }
 
 func readFile(path string) {
-	data, err := ioutil.ReadFile(path)
-	if err != nil {
-		return
-	}
-	fmt.Print(string(data))
-	// file, err := os.OpenFile(path, os.O_RDWR, 0644)
-	// if isError(err) {
-	// 	return
-	// }
-	// defer file.Close()
-
-	// fi, err := file.Stat()
+	// read whole file into memory from FILENAME
+	// data, err := ioutil.ReadFile(path)
 	// if err != nil {
-	// 	return
+	// 	panic(err)
 	// }
+	// fmt.Print(string(data))
 
-	// fmt.Printf("The file is %d bytes long\n", fi.Size())
-	// text := make([]byte, fi.Size())
-	// for {
-	// 	_, err = file.Read(text)
+	file, err := os.OpenFile(path, os.O_RDWR, 0644)
+	if isError(err) {
+		panic(err)
+		// return
+	}
+	defer file.Close()
 
-	// 	if err == io.EOF {
-	// 		break
-	// 	}
+	fi, err := file.Stat()
+	if err != nil {
+		panic(err)
+		// return
+	}
 
-	// 	if err != nil && err != io.EOF {
-	// 		isError(err)
-	// 		break
-	// 	}
-	// }
-	// fmt.Println(string(text))
+	fmt.Printf("The file is %d bytes long\n", fi.Size())
+	text := make([]byte, fi.Size())
+	for {
+		_, err = file.Read(text)
+
+		if err == io.EOF {
+			break
+		}
+
+		if err != nil && err != io.EOF {
+			isError(err)
+			break
+		}
+	}
+	fmt.Println(string(text))
 }
 
 func deleteFile(path string) {

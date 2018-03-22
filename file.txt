@@ -1,1 +1,3 @@
 cmpt 431 test file
+unicode 💩
+EOF

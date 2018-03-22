@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -66,10 +67,10 @@ func parseHeader(header string) (request, error) {
 		}
 		length = i
 	}
-	fmt.Println("header", method)
-	fmt.Println("tid", tid)
-	fmt.Println("seqnum", seqNum)
-	fmt.Println("len", length)
+	// fmt.Println("header", method)
+	// fmt.Println("tid", tid)
+	// fmt.Println("seqnum", seqNum)
+	// fmt.Println("len", length)
 	return request{
 		method:        method,
 		transactionID: tid,
@@ -135,6 +136,9 @@ func handleRead(req request, r *bufio.Reader) request {
 	}
 	req.data = []byte(filename)
 
+	// TODO: need to get the relative path base on the server directory
+	absPath, _ := filepath.Abs("./" + filename)
+	readFile(absPath)
 	return req
 }
 

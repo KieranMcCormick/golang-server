@@ -91,6 +91,8 @@ func parsePacket(conn net.Conn) (request, error) {
 	}
 
 	switch req.method {
+	case "NEW_TXN ":
+		req = handleNewTransaction(req)
 	case "WRITE":
 		req = handleWrite(req, r)
 	case "READ":
@@ -105,6 +107,10 @@ func parsePacket(conn net.Conn) (request, error) {
 	}
 
 	return req, nil
+}
+
+func handleNewTransaction(req request) request {
+	return req
 }
 
 func handleWrite(req request, r *bufio.Reader) request {

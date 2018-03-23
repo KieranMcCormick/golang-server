@@ -1,41 +1,94 @@
 package main
 
+/* Log file structure
+** first line name of file
+** writes are a line with a number indicating the sequence
+** followed by a byte array
+**
+** commits:
+**
+**
+ */
+
 import (
 	"fmt"
-	"net"
+	"strconv"
+	"strings"
 	"sync"
 )
 
-func recoverLogLocks() map[string]sync.RWMutex {
-	return make(map[string]sync.RWMutex)
+func recoverLogLocks() map[int]*sync.RWMutex {
+	return make(map[int]*sync.RWMutex)
 }
 
-func logNewTransaction(file string) {
-	if lock, ok := logLocks[file]; ok {
-		fmt.Println("Got lock")
-		lock.RLock()
-		defer lock.RUnlock()
-		fmt.Println("New Transaction")
+func logNewTransaction(r request) {
+	if _, ok := logLocks[r.transactionID]; !ok {
+		fmt.Println(strconv.Itoa(r.transactionID))
+
+		if !doesFileExist(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID)) {
+			logLocks[r.transactionID] = &sync.RWMutex{}
+			if lock, ok := logLocks[r.transactionID]; ok {
+				lock.Lock()
+				defer lock.Unlock()
+				createFile(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID))
+				appendFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), r.filename)
+				return
+			}
+			//Failed to get lock
+			fmt.Println("Failed to get lock")
+			//Return
+		} else {
+			//Log was not deleted properly
+			fmt.Println("Log was not deleted properly")
+			return
+		}
+	} else {
+		//Transaction is already open
+		fmt.Println("Transaction is already open")
+		return
 	}
-	fmt.Println("failed to get lock")
 }
 
-func logWrite(file string, conn net.Conn) {
-	if lock, ok := logLocks[file]; ok {
-		fmt.Println("Got lock")
-		lock.RLock()
-		defer lock.RUnlock()
-		fmt.Println("Write complete")
+func logWrite(r request) {
+
+	if _, ok := logLocks[r.transactionID]; ok {
+		if doesFileExist(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID)) {
+			if lock, ok := logLocks[r.transactionID]; ok {
+				lock.Lock()
+				defer lock.Unlock()
+				appendFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), "\n"+strconv.Itoa(r.transactionID)+"\n")
+				appendBytesFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), r.data)
+				return
+			}
+			//Failed to get lock
+			//Return
+		} else {
+			//Transaction log does not exist
+			return
+		}
+	} else {
+		//Transaction does not exist
+		return
 	}
-	fmt.Println("failed to get lock")
 }
 
-func logStartCommit(file string) {
-	if lock, ok := logLocks[file]; ok {
+func buildCommit(r request) {
+	logContents := strings.Split(string(readFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID))), `\n`)
+	for _, log := range logContents {
+		fmt.Println(log)
+
+	}
+}
+
+func logStartCommit(r request) {
+	if lock, ok := logLocks[r.transactionID]; ok {
+		lock.Lock()
+		defer lock.Unlock()
+
 		fmt.Println("Got lock")
-		lock.RLock()
-		defer lock.RUnlock()
+
 		fmt.Println("Starting commit")
+		return
 	}
 	fmt.Println("failed to get lock")
 }

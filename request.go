@@ -38,6 +38,10 @@ func parseHeader(header string) (request, error) {
 	method := ""
 	var tid, seqNum, length int
 	s := strings.Split(header, " ")
+	for i, sss := range s {
+		fmt.Println(i)
+		fmt.Println(sss)
+	}
 	if len(s) >= 1 {
 		method = s[0]
 	}
@@ -59,8 +63,9 @@ func parseHeader(header string) (request, error) {
 		seqNum = i
 	}
 	if len(s) >= 4 {
-		i, err := strconv.Atoi(s[2])
+		i, err := strconv.Atoi(s[3][:len(s[3])-2])
 		if err != nil {
+			fmt.Println(err)
 			return request{}, err
 		}
 		length = i
@@ -92,8 +97,9 @@ func parsePacket(conn net.Conn) (request, error) {
 	}
 
 	switch req.method {
-	case "NEW_TXN ":
-		req = handleNewTransaction(req)
+	case "NEW_TXN":
+		req = handleNewTransaction(req, r)
+		conn.Write([]byte("ACK 1"))
 	case "WRITE":
 		req = handleWrite(req, r)
 	case "READ":
@@ -110,7 +116,23 @@ func parsePacket(conn net.Conn) (request, error) {
 	return req, nil
 }
 
-func handleNewTransaction(req request) request {
+func handleNewTransaction(req request, r *bufio.Reader) request {
+	fmt.Println("new transaction")
+	// reads the empty line
+	_, err := r.ReadString('\n')
+	if err != nil {
+		return request{}
+	}
+	filename, err := r.ReadString('\n')
+	if err != nil {
+		return request{}
+	}
+	req.filename = trimSuffix(filename, "\n")
+	absPath, _ := filepath.Abs(DIRECTORY + filename)
+
+	fmt.Println(absPath)
+
+	logNewTransaction(req)
 	return req
 }
 
@@ -126,6 +148,9 @@ func handleWrite(req request, r *bufio.Reader) request {
 	}
 	fmt.Println("data: ", data)
 	req.data = []byte(data)
+
+	logWrite(req)
+
 	return req
 }
 

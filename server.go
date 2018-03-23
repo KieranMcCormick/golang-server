@@ -22,7 +22,11 @@ func init() {
 }
 
 func main() {
+	flag.Parse()
 	portNum := ":" + PORT
+	// fmt.Println(IP)
+	// fmt.Println(PORT)
+	// fmt.Println(DIRECTORY)
 	ln, err := net.Listen("tcp", portNum)
 	if err != nil {
 		// handle error

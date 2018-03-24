@@ -1,14 +1,31 @@
 package main
 
 /* Log file structure
-** first line name of file
-** writes are a line with a number indicating the sequence
-** followed by a byte array
-**
+** first line name of file to write to
+** writes are a line with the sequence num followed by data len
+** followed by data
+** i.e.
+
+	test_file.txt
+	0 44
+	WRITE 1 0 0 Sat, 24 Mar 2018 12:01:10 -0700
+
+	1 44
+	WRITE 1 1 0 Sat, 24 Mar 2018 12:01:13 -0700
+
+	5 44
+	WRITE 1 5 0 Sat, 24 Mar 2018 12:01:19 -0700
+
+	4 44
+	WRITE 1 4 0 Sat, 24 Mar 2018 12:01:22 -0700
+
 ** commits:
+** log that commit is starting
+** builds commit from log
+** creates file if none exists
+** appends write data to file
 **
-**
- */
+*/
 
 import (
 	"fmt"
@@ -88,36 +105,6 @@ func checkForSeqNum(path string, sequenceNum int) bool {
 	}
 	return false
 }
-
-/*
-func checkForLine(path string) {
-	f, err := os.Open(path)
-	if err != nil {
-		//return 0, err
-		return
-	}
-	defer f.Close()
-
-	// Splits on newlines by default.
-	scanner := bufio.NewScanner(f)
-
-	line := 1
-	// https://golang.org/pkg/bufio/#Scanner.Scan
-	for scanner.Scan() {
-		if strings.Contains(scanner.Text(), "1") {
-			fmt.Print("line: ")
-			fmt.Println(line)
-			//return line, nil
-			return
-		}
-
-		line++
-	}
-
-	if err := scanner.Err(); err != nil {
-		// Handle the error
-	}
-} */
 
 func logWrite(r request) {
 	if _, ok := logLocks[r.transactionID]; ok {

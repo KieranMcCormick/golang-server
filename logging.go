@@ -192,7 +192,7 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 	contentArray := make([]string, r.sequenceNum)
 	fmt.Println("last: " + contents[len(contents)-1])
 
-	if len(contents[len(contents)-2]) > 0 {
+	if len(contents[len(contents)-2]) > 0 { // detect if code is in middle of commit
 		fmt.Println("second last: " + contents[len(contents)-2])
 		fmt.Println(strings.Split(contents[len(contents)-2], " ")[0])
 		if strings.Split(contents[len(contents)-2], " ")[0] == "commit" {
@@ -255,6 +255,11 @@ func commit(r request) {
 			createFile(DIRECTORY + fileName)
 		}
 		appendFile(DIRECTORY+fileName, message)
+
+		//Clean up transaction
+		deleteFile(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID))
+		delete(logLocks, r.transactionID)
+
 		return
 	}
 	//Transaction does not exist

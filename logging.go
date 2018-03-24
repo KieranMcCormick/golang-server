@@ -60,20 +60,16 @@ func checkForSeqNum(path string, sequenceNum int) bool {
 	contentLength := 0
 	for _, s := range contents {
 		if flag { // bypassing message
-			if contentLength != 0 {
-				if s != "" {
-					contentLength = contentLength - len(s)
-					if contentLength == 0 {
-						flag = false
-					}
-				} else {
-					contentLength--
-					if contentLength == 0 {
-						flag = false
-					}
+			if s != "" {
+				contentLength = contentLength - len(s)
+				if contentLength == 0 {
+					flag = false
 				}
 			} else {
-				flag = false
+				contentLength--
+				if contentLength == 0 {
+					flag = false
+				}
 			}
 		} else { // Line is seq num and data len
 			if s != "" {

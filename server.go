@@ -9,6 +9,7 @@ import (
 
 var logLocks map[int]*sync.RWMutex
 var fileLocks map[string]*sync.RWMutex
+var createLockLock = &sync.RWMutex{}
 var createFileLock = &sync.RWMutex{}
 
 func init() {

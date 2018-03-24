@@ -83,24 +83,24 @@ func parseHeader(header string) (request, error) {
 }
 
 // helper to parse to stuff
-func parsePacket(conn net.Conn) (request, error) {
+func parsePacket(conn net.Conn) error {
 	var req request
 	var err error
 	r := bufio.NewReader(conn)
 	header, err := r.ReadString('\n')
 	if err != nil {
-		return request{}, nil
+		return nil
 	}
 	req, err = parseHeader(header)
 
 	if err != nil {
-		return request{}, nil
+		return nil
 	}
 
 	switch req.method {
 	case "NEW_TXN":
-		req = handleNewTransaction(req, r)
-		conn.Write([]byte("ACK 1"))
+		tid := strconv.Itoa(handleNewTransaction(req, r))
+		conn.Write([]byte("ACK " + tid))
 	case "WRITE":
 		req = handleWrite(req, r)
 	case "READ":
@@ -114,23 +114,24 @@ func parsePacket(conn net.Conn) (request, error) {
 		req = handleError(req)
 	}
 
-	return req, nil
+	return nil
 }
 
-func handleNewTransaction(req request, r *bufio.Reader) request {
+func handleNewTransaction(req request, r *bufio.Reader) int {
 	// reads the empty line
 	_, err := r.ReadString('\n')
 	if err != nil {
-		return request{}
+		return -1
 	}
 	filename, err := r.ReadString('\n')
 	if err != nil {
-		return request{}
+		return -1
 	}
 	req.filename = trimSuffix(filename, "\n")
 
-	logNewTransaction(req)
-	return req
+	retTID := logNewTransaction(req)
+
+	return retTID
 }
 
 func handleWrite(req request, r *bufio.Reader) request {

@@ -30,46 +30,80 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"log"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 )
 
 func recoverLogLocks() map[int]*sync.RWMutex {
-	return make(map[int]*sync.RWMutex)
-}
+	existingLogLocks := make(map[int]*sync.RWMutex)
 
-func logNewTransaction(r request) {
-	if _, ok := logLocks[r.transactionID]; !ok {
-		//fmt.Println(strconv.Itoa(r.transactionID))
-
-		if !doesFileExist(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID)) {
-			logLocks[r.transactionID] = &sync.RWMutex{}
-			for _, lock := range logLocks {
-				fmt.Print("lock: ")
-				fmt.Println(lock)
-			}
-			if lock, ok := logLocks[r.transactionID]; ok {
-				lock.Lock()
-				defer lock.Unlock()
-				createFile(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID))
-				appendFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), r.filename)
-				return
-			}
-			//Failed to get lock
-			fmt.Println("Failed to get lock")
-			//Return
-		} else {
-			//Log was not deleted properly
-			fmt.Println("Log was not deleted properly")
-			return
-		}
-	} else {
-		//Transaction is already open
-		fmt.Println("Transaction is already open")
-		return
+	files, err := ioutil.ReadDir(DIRECTORY)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	for _, f := range files {
+		r, err := regexp.MatchString(".log_", f.Name())
+		if err == nil && r {
+			tid, _ := strconv.Atoi(f.Name()[5:])
+			existingLogLocks[tid] = &sync.RWMutex{}
+		}
+	}
+	return existingLogLocks
 }
+
+func getNewTransactionID() int {
+	createLockLock.Lock()
+	defer createLockLock.Unlock()
+
+	i := 0
+	if len(logLocks) > 0 {
+		for k := range logLocks {
+			if k != i {
+				logLocks[i] = &sync.RWMutex{}
+				return i
+			}
+			i++
+		}
+	}
+	logLocks[i] = &sync.RWMutex{}
+	return i
+}
+
+func logNewTransaction(r request) int {
+	transactionID := getNewTransactionID()
+	lock, ok := logLocks[transactionID]
+	if !ok {
+		fmt.Println("Failed to get lock")
+		return -1
+	}
+	lock.Lock()
+	defer lock.Unlock()
+	createFile(DIRECTORY + ".log_" + strconv.Itoa(transactionID))
+	appendFile(DIRECTORY+".log_"+strconv.Itoa(transactionID), r.filename)
+	return transactionID
+}
+
+/* 	if _, ok := logLocks[r.transactionID]; !ok {
+//fmt.Println(strconv.Itoa(r.transactionID))
+if !doesFileExist(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID)) {
+*/
+//Failed to get lock
+//Return
+/* 		} else {
+		//Log was not deleted properly
+		fmt.Println("Log was not deleted properly")
+		return -1
+	}
+} else {
+	//Transaction is already open
+	fmt.Println("Transaction is already open")
+	return -1
+} */
 
 func checkForSeqNum(path string, sequenceNum int) bool {
 	contents := strings.Split(string(readFile(path)), "\n")
@@ -156,7 +190,17 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 
 	fileName = contents[0]
 	contentArray := make([]string, r.sequenceNum)
-	contents = contents[1:len(contents)] // bypassing file name
+	fmt.Println("last: " + contents[len(contents)-1])
+
+	if len(contents[len(contents)-2]) > 0 {
+		fmt.Println("second last: " + contents[len(contents)-2])
+		fmt.Println(strings.Split(contents[len(contents)-2], " ")[0])
+		if strings.Split(contents[len(contents)-2], " ")[0] == "commit" {
+			//Already committing
+			return "", "Already committing", false
+		}
+	}
+	contents = contents[1 : len(contents)-1] // bypassing file name and commit message
 	currentSeqNum := 0
 	numWrites := r.sequenceNum
 
@@ -165,16 +209,16 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 
 	for _, s := range contents {
 		if flag { // loading message to memory
-			if s != "" {
-				contentArray[currentSeqNum] = (contentArray[currentSeqNum] + s)
-				contentLength = contentLength - len(s)
+			if s == "" {
+				contentArray[currentSeqNum] = contentArray[currentSeqNum] + "\n"
+				contentLength--
 				if contentLength == 0 {
 					numWrites--
 					flag = false
 				}
 			} else {
-				contentArray[currentSeqNum] = contentArray[currentSeqNum] + "\n"
-				contentLength--
+				contentArray[currentSeqNum] = (contentArray[currentSeqNum] + s)
+				contentLength = contentLength - len(s)
 				if contentLength == 0 {
 					numWrites--
 					flag = false
@@ -196,16 +240,27 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 }
 
 func commit(r request) {
-	//if err = logStartCommit(); err {no log for trans >> (fail commit && no logging occured)}
-	fileName, message, ok := buildCommit(r, DIRECTORY+".log_"+strconv.Itoa(r.transactionID))
-	if !ok {
-		//error
+	if _, ok := logLocks[r.transactionID]; ok {
+		appendFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), "\ncommit "+strconv.Itoa(r.sequenceNum))
+		fileName, message, buildOK := buildCommit(r, DIRECTORY+".log_"+strconv.Itoa(r.transactionID))
+		fmt.Println("fin build")
+
+		if !buildOK {
+			//error from buildCommit
+			fmt.Println("error: " + message)
+
+			return
+		}
+		if !doesFileExist(DIRECTORY + fileName) {
+			createFile(DIRECTORY + fileName)
+		}
+		appendFile(DIRECTORY+fileName, message)
 		return
 	}
-	if !doesFileExist(DIRECTORY + fileName) {
-		createFile(DIRECTORY + fileName)
-	}
-	appendFile(DIRECTORY+fileName, message)
+	//Transaction does not exist
+	fmt.Println("error")
+
+	return
 }
 
 /*

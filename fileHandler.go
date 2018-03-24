@@ -86,7 +86,6 @@ func readFile(path string) []byte {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Print(string(data))
 	return data
 }
 

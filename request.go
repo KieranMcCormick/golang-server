@@ -128,9 +128,6 @@ func handleNewTransaction(req request, r *bufio.Reader) request {
 		return request{}
 	}
 	req.filename = trimSuffix(filename, "\n")
-	//filepath.Abs(DIRECTORY + filename)
-
-	//fmt.Println(absPath)
 
 	logNewTransaction(req)
 	return req
@@ -179,6 +176,7 @@ func handleRead(req request, r *bufio.Reader) request {
 }
 
 func handleCommit(req request) request {
+	commit(req)
 	return req
 }
 

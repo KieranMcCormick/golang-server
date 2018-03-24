@@ -190,16 +190,14 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 
 	fileName = contents[0]
 	contentArray := make([]string, r.sequenceNum)
-	fmt.Println("last: " + contents[len(contents)-1])
 
-	if len(contents[len(contents)-2]) > 0 { // detect if code is in middle of commit
-		fmt.Println("second last: " + contents[len(contents)-2])
-		fmt.Println(strings.Split(contents[len(contents)-2], " ")[0])
+	if len(contents[len(contents)-2]) > 0 { // detect if log is in middle of commit
 		if strings.Split(contents[len(contents)-2], " ")[0] == "commit" {
 			//Already committing
 			return "", "Already committing", false
 		}
 	}
+
 	contents = contents[1 : len(contents)-1] // bypassing file name and commit message
 	currentSeqNum := 0
 	numWrites := r.sequenceNum
@@ -227,8 +225,6 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 		} else { // Line is seq num and data len
 			if s != "" {
 				logLine := strings.Split(string(s), " ")
-				/* fmt.Print("logLine: ")
-				fmt.Println(logLine) */
 
 				currentSeqNum, _ = strconv.Atoi(string(logLine[0]))
 				contentLength, _ = strconv.Atoi(string(logLine[1]))
@@ -243,7 +239,6 @@ func commit(r request) {
 	if _, ok := logLocks[r.transactionID]; ok {
 		appendFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), "\ncommit "+strconv.Itoa(r.sequenceNum))
 		fileName, message, buildOK := buildCommit(r, DIRECTORY+".log_"+strconv.Itoa(r.transactionID))
-		fmt.Println("fin build")
 
 		if !buildOK {
 			//error from buildCommit
@@ -256,6 +251,21 @@ func commit(r request) {
 		}
 		appendFile(DIRECTORY+fileName, message)
 
+		//Clean up transaction
+		abort(r)
+
+		return
+	}
+	//Transaction does not exist
+	fmt.Println("error")
+
+	return
+}
+
+func abort(r request) {
+	if lock, ok := logLocks[r.transactionID]; ok {
+		lock.Lock()
+		defer lock.Unlock()
 		//Clean up transaction
 		deleteFile(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID))
 		delete(logLocks, r.transactionID)

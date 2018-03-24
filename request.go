@@ -182,6 +182,7 @@ func handleCommit(req request) request {
 }
 
 func handleAbort(req request) request {
+	abort(req)
 	return req
 }
 

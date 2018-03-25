@@ -164,7 +164,7 @@ func logWrite(r request) {
 					return
 				}
 				//log write success
-				fmt.Println("log write success")
+				//fmt.Println("log write success")
 
 				return
 			}
@@ -189,7 +189,7 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 	contents := strings.Split(string(readFile(path)), "\n")
 
 	fileName = contents[0]
-	contentArray := make([]string, r.sequenceNum)
+	contentArray := make([]string, r.sequenceNum+1)
 
 	if len(contents[len(contents)-2]) > 0 { // detect if log is in middle of commit
 		if strings.Split(contents[len(contents)-2], " ")[0] == "commit" {
@@ -200,33 +200,56 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 
 	contents = contents[1 : len(contents)-1] // bypassing file name and commit message
 	currentSeqNum := 0
+
 	numWrites := r.sequenceNum
+	if numWrites == 0 {
+		return fileName, "", true
+	}
 
 	flag := false
+	skipFlag := false
 	contentLength := 0
 
 	for _, s := range contents {
 		if flag { // loading message to memory
 			if s == "" {
-				contentArray[currentSeqNum] = contentArray[currentSeqNum] + "\n"
+				if !skipFlag {
+					contentArray[currentSeqNum] = contentArray[currentSeqNum] + "\n"
+				}
 				contentLength--
 				if contentLength == 0 {
-					numWrites--
+					if !skipFlag {
+						numWrites--
+					}
 					flag = false
+					skipFlag = false
 				}
 			} else {
-				contentArray[currentSeqNum] = (contentArray[currentSeqNum] + s)
+				if !skipFlag {
+					contentArray[currentSeqNum] = (contentArray[currentSeqNum] + s)
+				}
 				contentLength = contentLength - len(s)
 				if contentLength == 0 {
-					numWrites--
+					if !skipFlag {
+						numWrites--
+					}
 					flag = false
+					skipFlag = false
 				}
 			}
 		} else { // Line is seq num and data len
 			if s != "" {
+				if numWrites == 0 {
+					break
+				}
 				logLine := strings.Split(string(s), " ")
 
 				currentSeqNum, _ = strconv.Atoi(string(logLine[0]))
+
+				if currentSeqNum >= r.sequenceNum { //
+					skipFlag = true
+				}
+
 				contentLength, _ = strconv.Atoi(string(logLine[1]))
 				flag = true
 			}

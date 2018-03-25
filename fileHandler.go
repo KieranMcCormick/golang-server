@@ -49,7 +49,7 @@ func createFile(path string) {
 		defer file.Close()
 	}
 
-	fmt.Println("file created", path)
+	//fmt.Println("file created", path)
 }
 
 func appendBytesFile(path string, message []byte) {
@@ -95,7 +95,7 @@ func deleteFile(path string) {
 		return
 	}
 
-	fmt.Println("file deleted")
+	//fmt.Println("file deleted")
 }
 
 func isError(err error) bool {

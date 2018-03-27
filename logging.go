@@ -38,6 +38,10 @@ import (
 	"sync"
 )
 
+func getLogName(id int) string {
+	return ".log_" + strconv.Itoa(id)
+}
+
 func recoverLogLocks() map[int]*sync.RWMutex {
 	existingLogLocks := make(map[int]*sync.RWMutex)
 
@@ -85,8 +89,9 @@ func logNewTransaction(r request) int {
 	lock.Lock()
 	defer lock.Unlock()
 
-	createFile(".log_" + strconv.Itoa(transactionID))
-	appendFile(".log_"+strconv.Itoa(transactionID), r.filename)
+	logFileName := getLogName(transactionID)
+	createFile(logFileName)
+	appendFile(logFileName, r.filename)
 
 	// Success
 	return transactionID
@@ -127,19 +132,20 @@ func checkForSeqNum(logName string, sequenceNum int) bool {
 }
 
 func logWrite(r request) {
+	logFileName := getLogName(r.transactionID)
 	if _, ok := logLocks[r.transactionID]; ok {
-		if doesFileExist(".log_" + strconv.Itoa(r.transactionID)) {
+		if doesFileExist(logFileName) {
 			if lock, ok := logLocks[r.transactionID]; ok {
 				lock.Lock()
 				defer lock.Unlock()
-				if checkForSeqNum(".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
+				if checkForSeqNum(logFileName, r.sequenceNum) {
 					// ERROR: Sequence number already written to log
 					return
 				}
 
-				appendFile(".log_"+strconv.Itoa(r.transactionID), "\n"+strconv.Itoa(r.sequenceNum)+" "+strconv.Itoa(r.contentLength)+"\n"+string(r.data))
+				appendFile(logFileName, "\n"+strconv.Itoa(r.sequenceNum)+" "+strconv.Itoa(r.contentLength)+"\n"+string(r.data))
 
-				if !checkForSeqNum(".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
+				if !checkForSeqNum(logFileName, r.sequenceNum) {
 					// ERROR: failed to log write
 					return
 				}
@@ -252,10 +258,11 @@ func buildCommit(r request, logName string) (fileName, message string, ok bool) 
 }
 
 func commit(r request) {
+	logFileName := getLogName(r.transactionID)
 	if lock, ok := logLocks[r.transactionID]; ok {
 		lock.Lock()
 
-		fileName, message, buildOK := buildCommit(r, ".log_"+strconv.Itoa(r.transactionID))
+		fileName, message, buildOK := buildCommit(r, logFileName)
 
 		if !buildOK {
 			// ERROR: error passed up from buildCommit
@@ -264,7 +271,7 @@ func commit(r request) {
 			return
 		}
 
-		appendFile(".log_"+strconv.Itoa(r.transactionID), "\ncommit "+strconv.Itoa(r.sequenceNum)+" "+strconv.FormatInt(getLogFileLength(".log_"+strconv.Itoa(r.transactionID)), 10))
+		appendFile(logFileName, "\ncommit "+strconv.Itoa(r.sequenceNum)+" "+strconv.FormatInt(getLogFileLength(logFileName), 10))
 
 		if !doesFileExist(fileName) {
 			createFile(fileName)
@@ -289,7 +296,7 @@ func abort(r request) {
 		lock.Lock()
 		defer lock.Unlock()
 		//Clean up transaction
-		deleteFile(".log_" + strconv.Itoa(r.transactionID))
+		deleteFile(getLogName(r.transactionID))
 		delete(logLocks, r.transactionID)
 
 		// Success

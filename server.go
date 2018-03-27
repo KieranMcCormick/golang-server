@@ -1,9 +1,9 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"net"
+	"os"
 	"sync"
 )
 
@@ -13,17 +13,26 @@ var createLockLock = &sync.RWMutex{}
 var createFileLock = &sync.RWMutex{}
 
 func init() {
-	flag.StringVar(&IP, "ip", "127.0.0.1", "IP address")
-	flag.StringVar(&PORT, "p", "7896", "Port Number")
-	flag.StringVar(&DIRECTORY, "d", "./", "Directory")
+	IP = "localhost"
+	PORT = "7896"
+	DIRECTORY = "./"
 	TIMEOUT = 6000
 	logLocks = recoverLogLocks()
 	fileLocks = discoverFileLocks()
 }
 
 func main() {
-	portNum := ":" + PORT
-	ln, err := net.Listen("tcp", portNum)
+	if len(os.Args) > 1 {
+		IP = os.Args[1]
+	}
+	if len(os.Args) > 2 {
+		PORT = os.Args[2]
+	}
+	if len(os.Args) > 3 {
+		DIRECTORY = os.Args[3]
+	}
+
+	ln, err := net.Listen("tcp", IP+":"+PORT)
 	if err != nil {
 		// handle error
 		fmt.Println(err)

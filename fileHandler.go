@@ -7,9 +7,19 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
+
+func getFullPath(filename string) string {
+	absPath, err := filepath.Abs(DIRECTORY + filename)
+	if err != nil {
+		fmt.Println(err)
+		return DIRECTORY + filename
+	}
+	return absPath
+}
 
 func discoverFileLocks() map[string]*sync.RWMutex {
 	existingFileLocks := make(map[string]*sync.RWMutex)
@@ -25,8 +35,8 @@ func discoverFileLocks() map[string]*sync.RWMutex {
 	return existingFileLocks
 }
 
-func doesFileExist(path, fileName string) bool {
-	if _, err := os.Stat(path + fileName); err == nil {
+func doesFileExist(fileName string) bool {
+	if _, err := os.Stat(getFullPath(fileName)); err == nil {
 		//If file exists but no lock exists for that file, then create the lock
 		if _, ok := fileLocks[fileName]; !ok {
 			fileLocks[fileName] = &sync.RWMutex{}
@@ -39,16 +49,16 @@ func doesFileExist(path, fileName string) bool {
 	return false
 }
 
-func createFile(path, fileName string) {
+func createFile(fileName string) {
 	createFileLock.Lock()
 	defer createFileLock.Unlock()
 
 	// detect if file exists
-	var _, err = os.Stat(path + fileName)
+	var _, err = os.Stat(getFullPath(fileName))
 
 	// create file if none exists
 	if os.IsNotExist(err) {
-		var file, err = os.Create(path + fileName)
+		var file, err = os.Create(getFullPath(fileName))
 		if isError(err) {
 			// ERROR: Error creating file
 			return
@@ -85,8 +95,8 @@ func appendBytesFile(path, fileName string, message []byte) {
 	return
 }
 
-func appendFile(path, fileName, message string) {
-	file, err := os.OpenFile(path+fileName, os.O_APPEND|os.O_WRONLY, 0600)
+func appendFile(fileName, message string) {
+	file, err := os.OpenFile(getFullPath(fileName), os.O_APPEND|os.O_WRONLY, 0600)
 	if isError(err) {
 		return
 	}
@@ -111,13 +121,12 @@ func appendFile(path, fileName, message string) {
 	return
 }
 
-func getLogFileLength(path, fileName string) int64 {
-
-	contents := strings.Split(string(readFile(path, fileName)), "\n")
+func getLogFileLength(fileName string) int64 {
+	contents := strings.Split(string(readFile(getFullPath(fileName))), "\n")
 	fileToCommitName := contents[0]
 
-	if doesFileExist(DIRECTORY, fileToCommitName) {
-		file, err := os.Open(DIRECTORY + fileToCommitName)
+	if doesFileExist(fileToCommitName) {
+		file, err := os.Open(getFullPath(fileToCommitName))
 		defer file.Close()
 
 		if lock, ok := fileLocks[file.Name()]; ok {
@@ -144,13 +153,13 @@ func getLogFileLength(path, fileName string) int64 {
 	return 0
 }
 
-func readFile(path, fileName string) []byte {
+func readFile(fileName string) []byte {
 	// read whole file into memory from FILENAME
 	if lock, ok := fileLocks[fileName]; ok {
 		lock.RLock()
 		defer lock.RUnlock()
 
-		data, err := ioutil.ReadFile(path + fileName)
+		data, err := ioutil.ReadFile(getFullPath(fileName))
 		if err != nil {
 			// ERROR: error reading file
 			return []byte{}
@@ -162,9 +171,8 @@ func readFile(path, fileName string) []byte {
 	return []byte{}
 }
 
-func deleteFile(path, fileName string) {
-
-	var err = os.Remove(path + fileName)
+func deleteFile(fileName string) {
+	var err = os.Remove(getFullPath(fileName))
 	if isError(err) {
 		// ERROR: error deleting file
 		return
@@ -172,7 +180,6 @@ func deleteFile(path, fileName string) {
 	delete(fileLocks, fileName)
 	// Success
 	return
-
 }
 
 func isError(err error) bool {

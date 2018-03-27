@@ -59,17 +59,14 @@ func parseHeader(header string) (request, error) {
 		seqNum = i
 	}
 	if len(s) >= 4 {
-		i, err := strconv.Atoi(s[3][:len(s[3])-2])
+		lenStr := strings.TrimRight(s[3], "\r\n")
+		i, err := strconv.Atoi(lenStr)
 		if err != nil {
 			fmt.Println(err)
 			return request{}, err
 		}
 		length = i
 	}
-	// fmt.Println("header", method)
-	// fmt.Println("tid", tid)
-	// fmt.Println("seqnum", seqNum)
-	// fmt.Println("len", length)
 	return request{
 		method:        method,
 		transactionID: tid,
@@ -123,7 +120,7 @@ func handleNewTransaction(req request, r *bufio.Reader) int {
 	if err != nil {
 		return -1
 	}
-	req.filename = trimSuffix(filename, "\n")
+	req.filename = strings.TrimRight(filename, "\n")
 
 	retTID := logNewTransaction(req)
 
@@ -147,12 +144,12 @@ func handleWrite(req request, r *bufio.Reader) request {
 	return req
 }
 
-func trimSuffix(s, suffix string) string {
-	if strings.HasSuffix(s, suffix) {
-		s = s[:len(s)-len(suffix)]
-	}
-	return s
-}
+// func trimSuffix(s, suffix string) string {
+// 	if strings.HasSuffix(s, suffix) {
+// 		s = s[:len(s)-len(suffix)]
+// 	}
+// 	return s
+// }
 
 func handleRead(req request, r *bufio.Reader) request {
 	// reads the empty line
@@ -164,11 +161,10 @@ func handleRead(req request, r *bufio.Reader) request {
 	if err != nil {
 		return request{}
 	}
-	filename = trimSuffix(filename, "\n")
-	//absPath, _ := filepath.Abs(DIRECTORY + filename)
+	filename = strings.TrimRight(filename, "\n")
 
 	//fmt.Println(absPath)
-	req.data = readFile(DIRECTORY, filename)
+	req.data = readFile(filename)
 	return req
 }
 

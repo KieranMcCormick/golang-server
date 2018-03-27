@@ -85,15 +85,15 @@ func logNewTransaction(r request) int {
 	lock.Lock()
 	defer lock.Unlock()
 
-	createFile(DIRECTORY, ".log_"+strconv.Itoa(transactionID))
-	appendFile(DIRECTORY, ".log_"+strconv.Itoa(transactionID), r.filename)
+	createFile(".log_" + strconv.Itoa(transactionID))
+	appendFile(".log_"+strconv.Itoa(transactionID), r.filename)
 
 	// Success
 	return transactionID
 }
 
-func checkForSeqNum(path, logName string, sequenceNum int) bool {
-	contents := strings.Split(string(readFile(path, logName)), "\n")
+func checkForSeqNum(logName string, sequenceNum int) bool {
+	contents := strings.Split(string(readFile(getFullPath(logName))), "\n")
 	contents = contents[1:len(contents)] // bypassing file name
 	flag := false
 	contentLength := 0
@@ -128,18 +128,18 @@ func checkForSeqNum(path, logName string, sequenceNum int) bool {
 
 func logWrite(r request) {
 	if _, ok := logLocks[r.transactionID]; ok {
-		if doesFileExist(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID)) {
+		if doesFileExist(".log_" + strconv.Itoa(r.transactionID)) {
 			if lock, ok := logLocks[r.transactionID]; ok {
 				lock.Lock()
 				defer lock.Unlock()
-				if checkForSeqNum(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
+				if checkForSeqNum(".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
 					// ERROR: Sequence number already written to log
 					return
 				}
 
-				appendFile(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID), "\n"+strconv.Itoa(r.sequenceNum)+" "+strconv.Itoa(r.contentLength)+"\n"+string(r.data))
+				appendFile(".log_"+strconv.Itoa(r.transactionID), "\n"+strconv.Itoa(r.sequenceNum)+" "+strconv.Itoa(r.contentLength)+"\n"+string(r.data))
 
-				if !checkForSeqNum(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
+				if !checkForSeqNum(".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
 					// ERROR: failed to log write
 					return
 				}
@@ -157,8 +157,8 @@ func logWrite(r request) {
 }
 
 //check that sequence num is good with log
-func buildCommit(r request, logPath, logName string) (fileName, message string, ok bool) {
-	contents := strings.Split(string(readFile(logPath, logName)), "\n")
+func buildCommit(r request, logName string) (fileName, message string, ok bool) {
+	contents := strings.Split(string(readFile(logName)), "\n")
 
 	fileName = contents[0]
 	contentArray := make([]string, r.sequenceNum)
@@ -255,7 +255,7 @@ func commit(r request) {
 	if lock, ok := logLocks[r.transactionID]; ok {
 		lock.Lock()
 
-		fileName, message, buildOK := buildCommit(r, DIRECTORY, ".log_"+strconv.Itoa(r.transactionID))
+		fileName, message, buildOK := buildCommit(r, ".log_"+strconv.Itoa(r.transactionID))
 
 		if !buildOK {
 			// ERROR: error passed up from buildCommit
@@ -264,12 +264,12 @@ func commit(r request) {
 			return
 		}
 
-		appendFile(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID), "\ncommit "+strconv.Itoa(r.sequenceNum)+" "+strconv.FormatInt(getLogFileLength(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID)), 10))
+		appendFile(".log_"+strconv.Itoa(r.transactionID), "\ncommit "+strconv.Itoa(r.sequenceNum)+" "+strconv.FormatInt(getLogFileLength(".log_"+strconv.Itoa(r.transactionID)), 10))
 
-		if !doesFileExist(DIRECTORY, fileName) {
-			createFile(DIRECTORY, fileName)
+		if !doesFileExist(fileName) {
+			createFile(fileName)
 		}
-		appendFile(DIRECTORY, fileName, message)
+		appendFile(fileName, message)
 
 		//Need to unlock before abort so log file can be deleted
 		lock.Unlock()
@@ -289,7 +289,7 @@ func abort(r request) {
 		lock.Lock()
 		defer lock.Unlock()
 		//Clean up transaction
-		deleteFile(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID))
+		deleteFile(".log_" + strconv.Itoa(r.transactionID))
 		delete(logLocks, r.transactionID)
 
 		// Success

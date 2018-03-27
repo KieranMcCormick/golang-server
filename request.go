@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -38,6 +37,7 @@ func parseHeader(header string) (request, error) {
 	method := ""
 	var tid, seqNum, length int
 	s := strings.Split(header, " ")
+
 	if len(s) >= 1 {
 		method = s[0]
 	}
@@ -59,8 +59,9 @@ func parseHeader(header string) (request, error) {
 		seqNum = i
 	}
 	if len(s) >= 4 {
-		i, err := strconv.Atoi(s[2])
+		i, err := strconv.Atoi(s[3][:len(s[3])-2])
 		if err != nil {
+			fmt.Println(err)
 			return request{}, err
 		}
 		length = i
@@ -78,22 +79,24 @@ func parseHeader(header string) (request, error) {
 }
 
 // helper to parse to stuff
-func parsePacket(conn net.Conn) (request, error) {
+func parsePacket(conn net.Conn) error {
 	var req request
 	var err error
 	r := bufio.NewReader(conn)
 	header, err := r.ReadString('\n')
 	if err != nil {
-		return request{}, nil
+		return nil
 	}
 	req, err = parseHeader(header)
+
 	if err != nil {
-		return request{}, nil
+		return nil
 	}
 
 	switch req.method {
-	case "NEW_TXN ":
-		req = handleNewTransaction(req)
+	case "NEW_TXN":
+		tid := strconv.Itoa(handleNewTransaction(req, r))
+		conn.Write([]byte("ACK " + tid))
 	case "WRITE":
 		req = handleWrite(req, r)
 	case "READ":
@@ -107,11 +110,24 @@ func parsePacket(conn net.Conn) (request, error) {
 		req = handleError(req)
 	}
 
-	return req, nil
+	return nil
 }
 
-func handleNewTransaction(req request) request {
-	return req
+func handleNewTransaction(req request, r *bufio.Reader) int {
+	// reads the empty line
+	_, err := r.ReadString('\n')
+	if err != nil {
+		return -1
+	}
+	filename, err := r.ReadString('\n')
+	if err != nil {
+		return -1
+	}
+	req.filename = trimSuffix(filename, "\n")
+
+	retTID := logNewTransaction(req)
+
+	return retTID
 }
 
 func handleWrite(req request, r *bufio.Reader) request {
@@ -124,8 +140,10 @@ func handleWrite(req request, r *bufio.Reader) request {
 	if err != nil {
 		return request{}
 	}
-	fmt.Println("data: ", data)
+	//fmt.Println("data: ", data)
 	req.data = []byte(data)
+	logWrite(req)
+
 	return req
 }
 
@@ -147,18 +165,20 @@ func handleRead(req request, r *bufio.Reader) request {
 		return request{}
 	}
 	filename = trimSuffix(filename, "\n")
-	absPath, _ := filepath.Abs(DIRECTORY + filename)
+	//absPath, _ := filepath.Abs(DIRECTORY + filename)
 
-	fmt.Println(absPath)
-	req.data = readFile(absPath)
+	//fmt.Println(absPath)
+	req.data = readFile(DIRECTORY, filename)
 	return req
 }
 
 func handleCommit(req request) request {
+	commit(req)
 	return req
 }
 
 func handleAbort(req request) request {
+	abort(req)
 	return req
 }
 

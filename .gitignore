@@ -40,3 +40,4 @@ Temporary Items
 # End of https://www.gitignore.io/api/macos,visualstudiocode
 
 server
+.log_*

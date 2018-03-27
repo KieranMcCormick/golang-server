@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"net"
-	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -38,10 +37,7 @@ func parseHeader(header string) (request, error) {
 	method := ""
 	var tid, seqNum, length int
 	s := strings.Split(header, " ")
-	// for i, sss := range s {
-	// 	fmt.Println(i)
-	// 	fmt.Println(sss)
-	// }
+
 	if len(s) >= 1 {
 		method = s[0]
 	}
@@ -169,10 +165,10 @@ func handleRead(req request, r *bufio.Reader) request {
 		return request{}
 	}
 	filename = trimSuffix(filename, "\n")
-	absPath, _ := filepath.Abs(DIRECTORY + filename)
+	//absPath, _ := filepath.Abs(DIRECTORY + filename)
 
 	//fmt.Println(absPath)
-	req.data = readFile(absPath)
+	req.data = readFile(DIRECTORY, filename)
 	return req
 }
 

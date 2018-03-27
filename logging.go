@@ -19,6 +19,8 @@ package main
 	4 44
 	WRITE 1 4 0 Sat, 24 Mar 2018 12:01:22 -0700
 
+
+
 ** commits:
 ** check for transaction log
 ** log that commit is starting
@@ -29,9 +31,7 @@ package main
 */
 
 import (
-	"fmt"
 	"io/ioutil"
-	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -43,7 +43,8 @@ func recoverLogLocks() map[int]*sync.RWMutex {
 
 	files, err := ioutil.ReadDir(DIRECTORY)
 	if err != nil {
-		log.Fatal(err)
+		// ERROR: error reading directory
+		return existingLogLocks
 	}
 
 	for _, f := range files {
@@ -78,35 +79,21 @@ func logNewTransaction(r request) int {
 	transactionID := getNewTransactionID()
 	lock, ok := logLocks[transactionID]
 	if !ok {
-		fmt.Println("Failed to get lock")
+		// ERROR: Failed to get lock, server error
 		return -1
 	}
 	lock.Lock()
 	defer lock.Unlock()
-	createFile(DIRECTORY + ".log_" + strconv.Itoa(transactionID))
-	appendFile(DIRECTORY+".log_"+strconv.Itoa(transactionID), r.filename)
+
+	createFile(DIRECTORY, ".log_"+strconv.Itoa(transactionID))
+	appendFile(DIRECTORY, ".log_"+strconv.Itoa(transactionID), r.filename)
+
+	// Success
 	return transactionID
 }
 
-/* 	if _, ok := logLocks[r.transactionID]; !ok {
-//fmt.Println(strconv.Itoa(r.transactionID))
-if !doesFileExist(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID)) {
-*/
-//Failed to get lock
-//Return
-/* 		} else {
-		//Log was not deleted properly
-		fmt.Println("Log was not deleted properly")
-		return -1
-	}
-} else {
-	//Transaction is already open
-	fmt.Println("Transaction is already open")
-	return -1
-} */
-
-func checkForSeqNum(path string, sequenceNum int) bool {
-	contents := strings.Split(string(readFile(path)), "\n")
+func checkForSeqNum(path, logName string, sequenceNum int) bool {
+	contents := strings.Split(string(readFile(path, logName)), "\n")
 	contents = contents[1:len(contents)] // bypassing file name
 	flag := false
 	contentLength := 0
@@ -126,8 +113,6 @@ func checkForSeqNum(path string, sequenceNum int) bool {
 		} else { // Line is seq num and data len
 			if s != "" {
 				logLine := strings.Split(string(s), " ")
-				/* 				fmt.Print("logLine: ")
-				   				fmt.Println(logLine) */
 				lineSeqNum, _ := strconv.Atoi(string(logLine[0]))
 				if lineSeqNum != sequenceNum {
 					flag = true
@@ -143,62 +128,50 @@ func checkForSeqNum(path string, sequenceNum int) bool {
 
 func logWrite(r request) {
 	if _, ok := logLocks[r.transactionID]; ok {
-		if doesFileExist(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID)) {
+		if doesFileExist(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID)) {
 			if lock, ok := logLocks[r.transactionID]; ok {
 				lock.Lock()
 				defer lock.Unlock()
-				if checkForSeqNum(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
-					//Sequence number already written to log
-					fmt.Println("Sequence number already written to log")
-
+				if checkForSeqNum(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
+					// ERROR: Sequence number already written to log
 					return
 				}
 
-				//log write
-				appendFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), "\n"+strconv.Itoa(r.sequenceNum)+" "+strconv.Itoa(r.contentLength)+"\n"+string(r.data))
+				appendFile(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID), "\n"+strconv.Itoa(r.sequenceNum)+" "+strconv.Itoa(r.contentLength)+"\n"+string(r.data))
 
-				if !checkForSeqNum(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
-					//failed to log write
-					fmt.Println("failed to log write")
-
+				if !checkForSeqNum(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID), r.sequenceNum) {
+					// ERROR: failed to log write
 					return
 				}
 				//log write success
-				//fmt.Println("log write success")
-
 				return
 			}
-			//Failed to get lock
-			fmt.Println("Failed to get lock")
-
-			//Return
-		} else {
-			fmt.Println("Transaction log does not exist")
-			//Transaction log does not exist
+			// ERROR: Failed to get lock
 			return
 		}
-	} else {
-		fmt.Println("Transaction does not exist")
-		//Transaction does not exist
+		// ERROR: Transaction log does not exist
 		return
 	}
+	// ERROR: Transaction does not exist
+	return
 }
 
 //check that sequence num is good with log
-func buildCommit(r request, path string) (fileName, message string, ok bool) {
-	contents := strings.Split(string(readFile(path)), "\n")
+func buildCommit(r request, logPath, logName string) (fileName, message string, ok bool) {
+	contents := strings.Split(string(readFile(logPath, logName)), "\n")
 
 	fileName = contents[0]
-	contentArray := make([]string, r.sequenceNum+1)
+	contentArray := make([]string, r.sequenceNum)
+	seqNums := make([]bool, r.sequenceNum)
 
 	if len(contents[len(contents)-2]) > 0 { // detect if log is in middle of commit
-		if strings.Split(contents[len(contents)-2], " ")[0] == "commit" {
-			//Already committing
+		if strings.Split(contents[len(contents)-1], " ")[0] == "commit" {
+			// ERROR: Already committing
 			return "", "Already committing", false
 		}
 	}
 
-	contents = contents[1 : len(contents)-1] // bypassing file name and commit message
+	contents = contents[1:len(contents)] // bypassing file name
 	currentSeqNum := 0
 
 	numWrites := r.sequenceNum
@@ -211,6 +184,7 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 	contentLength := 0
 
 	for _, s := range contents {
+
 		if flag { // loading message to memory
 			if s == "" {
 				if !skipFlag {
@@ -248,6 +222,8 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 
 				if currentSeqNum >= r.sequenceNum { //
 					skipFlag = true
+				} else {
+					seqNums[currentSeqNum] = true
 				}
 
 				contentLength, _ = strconv.Atoi(string(logLine[1]))
@@ -255,33 +231,56 @@ func buildCommit(r request, path string) (fileName, message string, ok bool) {
 			}
 		}
 	}
+
+	allSeqNums := true
+	seqNumToReAck := ""
+	for i, t := range seqNums {
+		if t == false {
+			allSeqNums = false
+			if len(seqNumToReAck) != 0 {
+				seqNumToReAck = seqNumToReAck + " "
+			}
+			seqNumToReAck = seqNumToReAck + strconv.Itoa(i)
+		}
+	}
+	if !allSeqNums {
+		// ERROR: Not all sequence numbers written
+		return fileName, seqNumToReAck, false
+	}
+	// Success
 	return fileName, strings.Join(contentArray[:], ""), true
 }
 
 func commit(r request) {
-	if _, ok := logLocks[r.transactionID]; ok {
-		appendFile(DIRECTORY+".log_"+strconv.Itoa(r.transactionID), "\ncommit "+strconv.Itoa(r.sequenceNum))
-		fileName, message, buildOK := buildCommit(r, DIRECTORY+".log_"+strconv.Itoa(r.transactionID))
+	if lock, ok := logLocks[r.transactionID]; ok {
+		lock.Lock()
+
+		fileName, message, buildOK := buildCommit(r, DIRECTORY, ".log_"+strconv.Itoa(r.transactionID))
 
 		if !buildOK {
-			//error from buildCommit
-			fmt.Println("error: " + message)
-
+			// ERROR: error passed up from buildCommit
+			//fmt.Println("error: " + message)
+			lock.Unlock()
 			return
 		}
-		if !doesFileExist(DIRECTORY + fileName) {
-			createFile(DIRECTORY + fileName)
+
+		appendFile(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID), "\ncommit "+strconv.Itoa(r.sequenceNum)+" "+strconv.FormatInt(getLogFileLength(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID)), 10))
+
+		if !doesFileExist(DIRECTORY, fileName) {
+			createFile(DIRECTORY, fileName)
 		}
-		appendFile(DIRECTORY+fileName, message)
+		appendFile(DIRECTORY, fileName, message)
+
+		//Need to unlock before abort so log file can be deleted
+		lock.Unlock()
 
 		//Clean up transaction
 		abort(r)
 
+		// Success
 		return
 	}
-	//Transaction does not exist
-	fmt.Println("error")
-
+	// ERROR: Transaction does not exist
 	return
 }
 
@@ -290,27 +289,12 @@ func abort(r request) {
 		lock.Lock()
 		defer lock.Unlock()
 		//Clean up transaction
-		deleteFile(DIRECTORY + ".log_" + strconv.Itoa(r.transactionID))
+		deleteFile(DIRECTORY, ".log_"+strconv.Itoa(r.transactionID))
 		delete(logLocks, r.transactionID)
 
+		// Success
 		return
 	}
-	//Transaction does not exist
-	fmt.Println("error")
-
+	// ERROR: Transaction does not exist
 	return
 }
-
-/*
-func logStartCommit(r request) {
-	if lock, ok := logLocks[r.transactionID]; ok {
-		lock.Lock()
-		defer lock.Unlock()
-		buildCommit(r)
-		fmt.Println("Got lock")
-
-		fmt.Println("Starting commit")
-		return
-	}
-	fmt.Println("failed to get lock")
-} */

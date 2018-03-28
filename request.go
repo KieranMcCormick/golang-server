@@ -87,18 +87,28 @@ func parseHeader(header string) (request, error) {
 }
 
 // helper to parse to stuff
-func parsePacket(conn net.Conn) error {
+func parsePacket(conn net.Conn) {
 	var req request
 	var err error
 	r := bufio.NewReader(conn)
 	header, err := r.ReadString('\n')
 	if err != nil {
-		return nil
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
+		sendErrorResponse(conn, res)
+		return
 	}
 	req, err = parseHeader(header)
 
 	if err != nil {
-		return nil
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
+		sendErrorResponse(conn, res)
+		return
+	}
+
+	if req.method == "WRITE" && req.sequenceNum < 1 {
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
+		sendErrorResponse(conn, res)
+		return
 	}
 
 	switch req.method {
@@ -116,8 +126,6 @@ func parsePacket(conn net.Conn) error {
 	default:
 		sendErrorResponse(conn, response{errorCode: 202})
 	}
-
-	return nil
 }
 
 func handleNewTransaction(req request, r *bufio.Reader) response {
@@ -167,13 +175,6 @@ func handleWrite(req request, r *bufio.Reader, conn net.Conn) {
 // }
 
 func handleRead(req request, r *bufio.Reader, conn net.Conn) {
-	// abort early if seq num is less 1
-	if req.sequenceNum < 1 {
-		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
-		sendErrorResponse(conn, res)
-		return
-	}
-
 	// reads the empty line
 	_, err := r.ReadString('\n')
 	if err != nil {
@@ -216,7 +217,6 @@ func handleAbort(req request, conn net.Conn) {
 }
 
 func sendErrorResponse(conn net.Conn, res response) {
-	fmt.Println("sending error ", res.errorCode)
 	switch res.errorCode {
 	case 201:
 		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 201, "Invalid transaction ID")

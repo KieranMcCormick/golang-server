@@ -158,7 +158,7 @@ func logWrite(r request) response {
 				checkSeqStatus = checkIfSeqExist(logFileName, r.sequenceNum)
 				if checkSeqStatus == 208 {
 					//log write success
-					return newResponse("SUCCSS", r.transactionID, r.sequenceNum, 200, "")
+					return newResponse("ACK", r.transactionID, r.sequenceNum, 200, "")
 				}
 
 				// ERROR: failed to log write
@@ -318,7 +318,7 @@ func abort(r request) response {
 		delete(logLocks, r.transactionID)
 
 		// Success
-		return newResponse("SUCCESS", r.transactionID, r.sequenceNum, 200, "")
+		return newResponse("ACK", r.transactionID, r.sequenceNum, 200, "")
 	}
 	// ERROR: Transaction does not exist
 	return newResponse("ERROR", r.transactionID, r.sequenceNum, 201, "")

@@ -118,11 +118,13 @@ func appendFile(fileName, message string) {
 		return
 	}
 	// Error: File lock does not exist
+	fmt.Println("File lock does not exist")
 	return
 }
 
 func getLogFileLength(fileName string) int64 {
-	contents := strings.Split(string(readFile(getFullPath(fileName))), "\n")
+	data, _ := readFile(fileName)
+	contents := strings.Split(string(data), "\n")
 	fileToCommitName := contents[0]
 
 	if doesFileExist(fileToCommitName) {
@@ -153,7 +155,7 @@ func getLogFileLength(fileName string) int64 {
 	return 0
 }
 
-func readFile(fileName string) []byte {
+func readFile(fileName string) ([]byte, int) {
 	// read whole file into memory from FILENAME
 	if lock, ok := fileLocks[fileName]; ok {
 		lock.RLock()
@@ -162,13 +164,13 @@ func readFile(fileName string) []byte {
 		data, err := ioutil.ReadFile(getFullPath(fileName))
 		if err != nil {
 			// ERROR: error reading file
-			return []byte{}
+			return []byte{}, 205
 		}
 		// Success
-		return data
+		return data, 200
 	}
 	// ERROR: File lock does not exist
-	return []byte{}
+	return []byte{}, 206
 }
 
 func deleteFile(fileName string) {

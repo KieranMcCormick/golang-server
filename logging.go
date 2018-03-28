@@ -31,6 +31,7 @@ package main
 */
 
 import (
+	"fmt"
 	"io/ioutil"
 	"regexp"
 	"strconv"
@@ -84,6 +85,7 @@ func logNewTransaction(r request) int {
 	lock, ok := logLocks[transactionID]
 	if !ok {
 		// ERROR: Failed to get lock, server error
+		// TODO:? would logLocks has index error?
 		return -1
 	}
 	lock.Lock()
@@ -97,8 +99,12 @@ func logNewTransaction(r request) int {
 	return transactionID
 }
 
-func checkForSeqNum(logName string, sequenceNum int) bool {
-	contents := strings.Split(string(readFile(getFullPath(logName))), "\n")
+func checkIfSeqExist(logName string, sequenceNum int) int {
+	data, code := readFile(logName)
+	if code != 200 {
+		return code
+	}
+	contents := strings.Split(string(data), "\n")
 	contents = contents[1:len(contents)] // bypassing file name
 	flag := false
 	contentLength := 0
@@ -123,48 +129,57 @@ func checkForSeqNum(logName string, sequenceNum int) bool {
 					flag = true
 					contentLength, _ = strconv.Atoi(string(logLine[1]))
 				} else {
-					return true
+					return 208
 				}
 			}
 		}
 	}
-	return false
+	// ERROR: what's here
+	return 200
 }
 
-func logWrite(r request) {
+func logWrite(r request) response {
 	logFileName := getLogName(r.transactionID)
 	if _, ok := logLocks[r.transactionID]; ok {
 		if doesFileExist(logFileName) {
 			if lock, ok := logLocks[r.transactionID]; ok {
 				lock.Lock()
 				defer lock.Unlock()
-				if checkForSeqNum(logFileName, r.sequenceNum) {
+				checkSeqStatus := checkIfSeqExist(logFileName, r.sequenceNum)
+				if checkSeqStatus == 208 {
 					// ERROR: Sequence number already written to log
-					return
+					fmt.Println("some error: ", checkSeqStatus)
+					return newResponse("ERROR", r.transactionID, r.sequenceNum, checkSeqStatus, "")
 				}
 
 				appendFile(logFileName, "\n"+strconv.Itoa(r.sequenceNum)+" "+strconv.Itoa(r.contentLength)+"\n"+string(r.data))
 
-				if !checkForSeqNum(logFileName, r.sequenceNum) {
-					// ERROR: failed to log write
-					return
+				checkSeqStatus = checkIfSeqExist(logFileName, r.sequenceNum)
+				if checkSeqStatus == 208 {
+					//log write success
+					return newResponse("SUCCSS", r.transactionID, r.sequenceNum, 200, "")
 				}
-				//log write success
-				return
+
+				// ERROR: failed to log write
+				fmt.Println("failed to log write", checkSeqStatus)
+				return newResponse("ERROR", r.transactionID, r.sequenceNum, checkSeqStatus, "")
 			}
 			// ERROR: Failed to get lock
-			return
+			// TODO:?
+			return newResponse("ERROR", r.transactionID, r.sequenceNum, 205, "")
 		}
 		// ERROR: Transaction log does not exist
-		return
+		// TODO:?
+		return newResponse("ERROR", r.transactionID, r.sequenceNum, 206, "")
 	}
 	// ERROR: Transaction does not exist
-	return
+	return newResponse("ERROR", r.transactionID, r.sequenceNum, 201, "")
 }
 
 //check that sequence num is good with log
-func buildCommit(r request, logName string) (fileName, message string, code int) {
-	contents := strings.Split(string(readFile(logName)), "\n")
+func buildCommit(r request, logFileName string) (fileName, message string, code int) {
+	data, _ := readFile(logFileName)
+	contents := strings.Split(string(data), "\n")
 
 	fileName = contents[0]
 	contentArray := make([]string, r.sequenceNum)
@@ -186,13 +201,13 @@ func buildCommit(r request, logName string) (fileName, message string, code int)
 		return fileName, "", 200
 	}
 
+	// indicates if it's parsing content or not --> loading message to memory
 	flag := false
 	skipFlag := false
 	contentLength := 0
 
 	for _, s := range contents {
-
-		if flag { // loading message to memory
+		if flag {
 			if s == "" {
 				if !skipFlag {
 					contentArray[currentSeqNum] = contentArray[currentSeqNum] + "\n"
@@ -283,19 +298,16 @@ func commit(r request) response {
 		lock.Unlock()
 
 		//Clean up transaction
-		abort(r)
+		res := abort(r)
 
-		// Success
-		return response{}
+		// Success or Fail
+		return res
 	}
 	// ERROR: Transaction does not exist
-	return response{
-		errorCode: 201,
-		method:    "ERROR",
-	}
+	return newResponse("ERROR", r.transactionID, r.sequenceNum, 201, "")
 }
 
-func abort(r request) {
+func abort(r request) response {
 	if lock, ok := logLocks[r.transactionID]; ok {
 		lock.Lock()
 		defer lock.Unlock()
@@ -304,8 +316,8 @@ func abort(r request) {
 		delete(logLocks, r.transactionID)
 
 		// Success
-		return
+		return newResponse("SUCCESS", r.transactionID, r.sequenceNum, 200, "")
 	}
 	// ERROR: Transaction does not exist
-	return
+	return newResponse("ERROR", r.transactionID, r.sequenceNum, 201, "")
 }

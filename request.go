@@ -106,16 +106,15 @@ func parsePacket(conn net.Conn) error {
 		tid := strconv.Itoa(handleNewTransaction(req, r))
 		conn.Write([]byte("ACK " + tid))
 	case "WRITE":
-		req = handleWrite(req, r)
+		handleWrite(req, r, conn)
 	case "READ":
-		req = handleRead(req, r)
-		conn.Write(req.data)
+		handleRead(req, r, conn)
 	case "COMMIT":
 		handleCommit(req, conn)
 	case "ABORT":
-		req = handleAbort(req)
+		handleAbort(req, conn)
 	default:
-		req = handleError(req)
+		sendErrorResponse(conn, response{errorCode: 202})
 	}
 
 	return nil
@@ -138,21 +137,26 @@ func handleNewTransaction(req request, r *bufio.Reader) int {
 	return retTID
 }
 
-func handleWrite(req request, r *bufio.Reader) request {
+func handleWrite(req request, r *bufio.Reader, conn net.Conn) {
 	// reads the empty line
 	_, err := r.ReadString('\n')
 	if err != nil {
-		return request{}
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 206, "")
+		sendErrorResponse(conn, res)
 	}
 	data, err := r.ReadString('\n')
 	if err != nil {
-		return request{}
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 206, "")
+		sendErrorResponse(conn, res)
 	}
 	//fmt.Println("data: ", data)
 	req.data = []byte(data)
-	logWrite(req)
-
-	return req
+	res := logWrite(req)
+	if res.method == "ERROR" {
+		sendErrorResponse(conn, res)
+	} else {
+		sendResponse(conn, res)
+	}
 }
 
 // func trimSuffix(s, suffix string) string {
@@ -162,39 +166,70 @@ func handleWrite(req request, r *bufio.Reader) request {
 // 	return s
 // }
 
-func handleRead(req request, r *bufio.Reader) request {
+func handleRead(req request, r *bufio.Reader, conn net.Conn) {
 	// reads the empty line
 	_, err := r.ReadString('\n')
 	if err != nil {
-		return request{}
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 206, "")
+		sendErrorResponse(conn, res)
+		return
 	}
 	filename, err := r.ReadString('\n')
 	if err != nil {
-		return request{}
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 206, "")
+		sendErrorResponse(conn, res)
+		return
 	}
 	filename = strings.TrimRight(filename, "\n")
 
-	//fmt.Println(absPath)
-	req.data = readFile(filename)
-	return req
+	data, code := readFile(filename)
+	if code != 200 {
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, code, "")
+		sendErrorResponse(conn, res)
+	}
+	conn.Write(data)
 }
 
 func handleCommit(req request, conn net.Conn) {
 	res := commit(req)
-	if res.errorCode == 207 {
-		sendReACK(conn, res)
+	if res.method == "ERROR" {
+		sendErrorResponse(conn, res)
 	} else {
 		sendResponse(conn, res)
 	}
 }
 
-func handleAbort(req request) request {
-	abort(req)
-	return req
+func handleAbort(req request, conn net.Conn) {
+	res := abort(req)
+	if res.method == "ERROR" {
+		sendErrorResponse(conn, res)
+	} else {
+		sendResponse(conn, res)
+	}
 }
 
-func handleError(req request) request {
-	return req
+func sendErrorResponse(conn net.Conn, res response) {
+	fmt.Println("sending error ", res.errorCode)
+	switch res.errorCode {
+	case 201:
+		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 201, "Invalid transaction ID")
+		sendResponse(conn, res)
+	case 202:
+		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 202, "Invalid Invalid operation")
+		sendResponse(conn, res)
+	case 205:
+		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 205, "File I/O error")
+		sendResponse(conn, res)
+	case 206:
+		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 206, "File not found")
+		sendResponse(conn, res)
+	case 207:
+		// Internal Error code: some seq num is missing
+		sendReACK(conn, res)
+	case 208:
+		// Internal Error code: seq num already exist, ignore client
+		return
+	}
 }
 
 func sendResponse(conn net.Conn, res response) {
@@ -203,20 +238,18 @@ func sendResponse(conn net.Conn, res response) {
 
 func constructResponse(res response) []byte {
 	resPacket := res.method + " "
-	if res.errorCode == 200 {
-		// success
-		resPacket += strconv.Itoa(res.transactionID) + " " // id
-		resPacket += strconv.Itoa(res.sequenceNum) + " "   // seq
-		resPacket += "0 "                                  // code
-		resPacket += "0 "                                  // length
-		resPacket += "\r\n\r\n\r\n"
-	} else {
+	if res.method == "ERROR" {
 		// error
 		resPacket += strconv.Itoa(res.transactionID) + " "
 		resPacket += strconv.Itoa(res.sequenceNum) + " "
 		resPacket += strconv.Itoa(res.errorCode) + " "
 		resPacket += strconv.Itoa(len([]byte(res.reason))) + " "
 		resPacket += res.reason + "\r\n\r\n"
+	} else {
+		// success
+		resPacket += strconv.Itoa(res.transactionID) + " " // id
+		resPacket += strconv.Itoa(res.sequenceNum) + " "   // seq
+		resPacket += "0 0 \r\n\r\n\r\n"                    // code + length + blank
 	}
 	return []byte(resPacket)
 }

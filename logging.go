@@ -163,26 +163,27 @@ func logWrite(r request) {
 }
 
 //check that sequence num is good with log
-func buildCommit(r request, logName string) (fileName, message string, ok bool) {
+func buildCommit(r request, logName string) (fileName, message string, code int) {
 	contents := strings.Split(string(readFile(logName)), "\n")
 
 	fileName = contents[0]
 	contentArray := make([]string, r.sequenceNum)
 	seqNums := make([]bool, r.sequenceNum)
 
-	if len(contents[len(contents)-2]) > 0 { // detect if log is in middle of commit
-		if strings.Split(contents[len(contents)-1], " ")[0] == "commit" {
-			// ERROR: Already committing
-			return "", "Already committing", false
-		}
-	}
+	// breaks when no write is in there
+	// if len(contents[len(contents)-2]) > 0 { // detect if log is in middle of commit
+	// 	if strings.Split(contents[len(contents)-1], " ")[0] == "commit" {
+	// 		// ERROR: Already committing
+	// 		return "", "Already committing", 300
+	// 	}
+	// }
 
 	contents = contents[1:len(contents)] // bypassing file name
 	currentSeqNum := 0
 
 	numWrites := r.sequenceNum
 	if numWrites == 0 {
-		return fileName, "", true
+		return fileName, "", 200
 	}
 
 	flag := false
@@ -251,24 +252,24 @@ func buildCommit(r request, logName string) (fileName, message string, ok bool) 
 	}
 	if !allSeqNums {
 		// ERROR: Not all sequence numbers written
-		return fileName, seqNumToReAck, false
+		return fileName, seqNumToReAck, 207
 	}
 	// Success
-	return fileName, strings.Join(contentArray[:], ""), true
+	return fileName, strings.Join(contentArray[:], ""), 200
 }
 
-func commit(r request) {
+func commit(r request) response {
 	logFileName := getLogName(r.transactionID)
 	if lock, ok := logLocks[r.transactionID]; ok {
 		lock.Lock()
 
-		fileName, message, buildOK := buildCommit(r, logFileName)
+		fileName, message, code := buildCommit(r, logFileName)
 
-		if !buildOK {
+		if code != 200 {
 			// ERROR: error passed up from buildCommit
 			//fmt.Println("error: " + message)
 			lock.Unlock()
-			return
+			return newResponse("ERROR", r.transactionID, r.sequenceNum, code, message)
 		}
 
 		appendFile(logFileName, "\ncommit "+strconv.Itoa(r.sequenceNum)+" "+strconv.FormatInt(getLogFileLength(logFileName), 10))
@@ -285,10 +286,13 @@ func commit(r request) {
 		abort(r)
 
 		// Success
-		return
+		return response{}
 	}
 	// ERROR: Transaction does not exist
-	return
+	return response{
+		errorCode: 201,
+		method:    "ERROR",
+	}
 }
 
 func abort(r request) {

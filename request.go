@@ -26,6 +26,17 @@ type response struct {
 	reason        string
 }
 
+func newResponse(method string, id, seq, code int, reason string) response {
+	return response{
+		method:        method,
+		transactionID: id,
+		sequenceNum:   seq,
+		errorCode:     code,
+		length:        len([]byte(reason)),
+		reason:        reason,
+	}
+}
+
 func sendErrorIfItExist(conn net.Conn, err error) bool {
 	if err != nil {
 		return true
@@ -100,7 +111,7 @@ func parsePacket(conn net.Conn) error {
 		req = handleRead(req, r)
 		conn.Write(req.data)
 	case "COMMIT":
-		req = handleCommit(req)
+		handleCommit(req, conn)
 	case "ABORT":
 		req = handleAbort(req)
 	default:
@@ -168,9 +179,13 @@ func handleRead(req request, r *bufio.Reader) request {
 	return req
 }
 
-func handleCommit(req request) request {
-	commit(req)
-	return req
+func handleCommit(req request, conn net.Conn) {
+	res := commit(req)
+	if res.errorCode == 207 {
+		sendReACK(conn, res)
+	} else {
+		sendResponse(conn, res)
+	}
 }
 
 func handleAbort(req request) request {
@@ -180,4 +195,41 @@ func handleAbort(req request) request {
 
 func handleError(req request) request {
 	return req
+}
+
+func sendResponse(conn net.Conn, res response) {
+	conn.Write(constructResponse(res))
+}
+
+func constructResponse(res response) []byte {
+	resPacket := res.method + " "
+	if res.errorCode == 200 {
+		// success
+		resPacket += strconv.Itoa(res.transactionID) + " " // id
+		resPacket += strconv.Itoa(res.sequenceNum) + " "   // seq
+		resPacket += "0 "                                  // code
+		resPacket += "0 "                                  // length
+		resPacket += "\r\n\r\n\r\n"
+	} else {
+		// error
+		resPacket += strconv.Itoa(res.transactionID) + " "
+		resPacket += strconv.Itoa(res.sequenceNum) + " "
+		resPacket += strconv.Itoa(res.errorCode) + " "
+		resPacket += strconv.Itoa(len([]byte(res.reason))) + " "
+		resPacket += res.reason + "\r\n\r\n"
+	}
+	return []byte(resPacket)
+}
+
+func sendReACK(conn net.Conn, res response) {
+	seqNum := strings.Split(res.reason, " ")
+	for i := 0; i < len(seqNum); i++ {
+		reason := "Missing sequence number " + seqNum[i]
+		seqNum, err := strconv.Atoi(seqNum[i])
+		if err != nil {
+			seqNum = -1
+		}
+		ackRes := newResponse("ERROR", res.transactionID, seqNum, 207, reason)
+		sendResponse(conn, ackRes)
+	}
 }

@@ -145,6 +145,7 @@ func logWrite(r request) response {
 			if lock, ok := logLocks[r.transactionID]; ok {
 				lock.Lock()
 				defer lock.Unlock()
+
 				checkSeqStatus := checkIfSeqExist(logFileName, r.sequenceNum)
 				if checkSeqStatus == 208 {
 					// ERROR: Sequence number already written to log
@@ -241,7 +242,7 @@ func buildCommit(r request, logFileName string) (fileName, message string, code 
 				logLine := strings.Split(string(s), " ")
 
 				currentSeqNum, _ = strconv.Atoi(string(logLine[0]))
-
+				currentSeqNum--
 				if currentSeqNum >= r.sequenceNum { //
 					skipFlag = true
 				} else {
@@ -262,7 +263,8 @@ func buildCommit(r request, logFileName string) (fileName, message string, code 
 			if len(seqNumToReAck) != 0 {
 				seqNumToReAck = seqNumToReAck + " "
 			}
-			seqNumToReAck = seqNumToReAck + strconv.Itoa(i)
+
+			seqNumToReAck = seqNumToReAck + strconv.Itoa(i+1)
 		}
 	}
 	if !allSeqNums {

@@ -64,7 +64,7 @@ func createFile(fileName string) {
 			return
 		}
 		defer file.Close()
-		fileLocks[file.Name()] = &sync.RWMutex{}
+		fileLocks[fileName] = &sync.RWMutex{}
 	}
 	// Success
 }
@@ -102,7 +102,7 @@ func appendFile(fileName, message string) {
 	}
 	defer file.Close()
 
-	if lock, ok := fileLocks[file.Name()]; ok {
+	if lock, ok := fileLocks[fileName]; ok {
 		lock.Lock()
 		defer lock.Unlock()
 
@@ -131,7 +131,7 @@ func getLogFileLength(fileName string) int64 {
 		file, err := os.Open(getFullPath(fileToCommitName))
 		defer file.Close()
 
-		if lock, ok := fileLocks[file.Name()]; ok {
+		if lock, ok := fileLocks[fileName]; ok {
 			lock.RLock()
 			defer lock.RUnlock()
 

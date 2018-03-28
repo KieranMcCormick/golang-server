@@ -103,8 +103,8 @@ func parsePacket(conn net.Conn) error {
 
 	switch req.method {
 	case "NEW_TXN":
-		tid := strconv.Itoa(handleNewTransaction(req, r))
-		conn.Write([]byte("ACK " + tid))
+		res := handleNewTransaction(req, r)
+		conn.Write(constructResponse(res))
 	case "WRITE":
 		handleWrite(req, r, conn)
 	case "READ":
@@ -120,21 +120,21 @@ func parsePacket(conn net.Conn) error {
 	return nil
 }
 
-func handleNewTransaction(req request, r *bufio.Reader) int {
+func handleNewTransaction(req request, r *bufio.Reader) response {
 	// reads the empty line
 	_, err := r.ReadString('\n')
 	if err != nil {
-		return -1
+		return newResponse("ERROR", -1, -1, 202, "")
 	}
 	filename, err := r.ReadString('\n')
 	if err != nil {
-		return -1
+		return newResponse("ERROR", -1, -1, 202, "")
 	}
 	req.filename = strings.TrimRight(filename, "\n")
 
 	retTID := logNewTransaction(req)
 
-	return retTID
+	return newResponse("ACK", retTID, 0, 0, "")
 }
 
 func handleWrite(req request, r *bufio.Reader, conn net.Conn) {
@@ -167,6 +167,13 @@ func handleWrite(req request, r *bufio.Reader, conn net.Conn) {
 // }
 
 func handleRead(req request, r *bufio.Reader, conn net.Conn) {
+	// abort early if seq num is less 1
+	if req.sequenceNum < 1 {
+		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
+		sendErrorResponse(conn, res)
+		return
+	}
+
 	// reads the empty line
 	_, err := r.ReadString('\n')
 	if err != nil {
@@ -232,14 +239,27 @@ func sendErrorResponse(conn net.Conn, res response) {
 	}
 }
 
+func sendReACK(conn net.Conn, res response) {
+	seqNum := strings.Split(res.reason, " ")
+	for i := 0; i < len(seqNum); i++ {
+		reason := "Missing sequence number " + seqNum[i]
+		seqNum, err := strconv.Atoi(seqNum[i])
+		if err != nil {
+			seqNum = -1
+		}
+		ackRes := newResponse("ERROR", res.transactionID, seqNum, 207, reason)
+		sendResponse(conn, ackRes)
+	}
+}
+
 func sendResponse(conn net.Conn, res response) {
 	conn.Write(constructResponse(res))
 }
 
 func constructResponse(res response) []byte {
 	resPacket := res.method + " "
-	if res.method == "ERROR" {
-		// error
+	if res.method == "ERROR" || res.method == "ACK_RESEND" {
+		// error or resend
 		resPacket += strconv.Itoa(res.transactionID) + " "
 		resPacket += strconv.Itoa(res.sequenceNum) + " "
 		resPacket += strconv.Itoa(res.errorCode) + " "
@@ -252,17 +272,4 @@ func constructResponse(res response) []byte {
 		resPacket += "0 0 \r\n\r\n\r\n"                    // code + length + blank
 	}
 	return []byte(resPacket)
-}
-
-func sendReACK(conn net.Conn, res response) {
-	seqNum := strings.Split(res.reason, " ")
-	for i := 0; i < len(seqNum); i++ {
-		reason := "Missing sequence number " + seqNum[i]
-		seqNum, err := strconv.Atoi(seqNum[i])
-		if err != nil {
-			seqNum = -1
-		}
-		ackRes := newResponse("ERROR", res.transactionID, seqNum, 207, reason)
-		sendResponse(conn, ackRes)
-	}
 }

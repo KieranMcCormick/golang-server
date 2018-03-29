@@ -32,6 +32,19 @@ func main() {
 		DIRECTORY = os.Args[3]
 	}
 
+	createDirIfNotExist(DIRECTORY)
+
+	// checking if any lingering log files
+	if len(logLocks) > 0 {
+		for k := range logLocks {
+			err := recoverLog(k)
+			if err != nil {
+				// something terrible happened
+				// abort(res)
+			}
+		}
+	}
+
 	ln, err := net.Listen("tcp", IP+":"+PORT)
 	if err != nil {
 		// handle error

@@ -33,6 +33,7 @@ package main
 import (
 	"fmt"
 	"io/ioutil"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -177,6 +178,111 @@ func logWrite(r request) response {
 	return newResponse("ERROR", r.transactionID, r.sequenceNum, 201, "")
 }
 
+func recoverLog(tid int) error {
+	logFileName := getLogName(tid)
+	data, _ := readFile(logFileName)
+	rawContents := strings.Split(string(data), "\n")
+	fileName := rawContents[0]
+	// base case: file with only file name
+	if len(rawContents) < 1 {
+		return nil
+	}
+
+	// seq + byte size Map
+
+	contents := rawContents[1:len(rawContents)] // bypassing file name
+
+	// indicates if it's parsing content or not --> loading message to memory
+	flag := false
+	contentLength := 0
+	totalLength := 0
+
+	for _, s := range contents {
+		if flag {
+			if s == "" {
+				// data has new lines in it
+				contentLength--
+				if contentLength == 0 {
+					flag = false
+				}
+				// increment i
+			} else {
+				// data string
+				contentLength = contentLength - len(s)
+				if contentLength == 0 {
+					flag = false
+				}
+			}
+		} else { // Line is seq num and data len
+			if s != "" {
+				// end of string ?
+				logLine := strings.Split(string(s), " ")
+				if logLine[0] == "commit" {
+					err := recoverCommit(tid, contentLength, fileName, logLine)
+					return err
+				}
+				// check commit here parse seq / file size
+
+				// compare with seq num / file size
+				// if file size mismatch
+				// erase everything after size
+				// then build it
+				// edit buildCommit() (does not handle commit being in the log file)
+				contentLength, _ = strconv.Atoi(string(logLine[1]))
+				totalLength += contentLength
+				flag = true
+			} else {
+				// what's here
+			}
+		}
+	}
+
+	if contentLength > 0 {
+		// need the index
+		// delete the previous write
+
+	}
+	return nil
+}
+
+func recoverCommit(tid, writeSize int, fileName string, logLine []string) error {
+	logFileName := getLogName(tid)
+	writeSize64 := int64(writeSize)
+	baseSize, _ := strconv.ParseInt(logLine[2], 10, 64)
+	fileSize := getLogFileLength(logFileName)
+	if (baseSize + writeSize64) == fileSize {
+		// already commited
+		// abort(res)
+	} else if baseSize != fileSize {
+		// Case: committed half way
+		// solution: reset to base state
+		err := os.Truncate(getFullPath(fileName), baseSize)
+		if err != nil {
+			return err
+		}
+	}
+	// Case: wrote to log file but fail to write to actual file
+	length, _ := strconv.Atoi(logLine[1])
+	res := request{
+		method:        "COMMIT",
+		transactionID: tid,
+		sequenceNum:   length,
+		contentLength: writeSize,
+	}
+	fileName, message, code := buildCommit(res, logFileName)
+	if code == 207 {
+		// ignore because it's resend
+		return nil
+	} else if code == 200 {
+		if !doesFileExist(fileName) {
+			createFile(fileName)
+		}
+		appendFile(fileName, message)
+		// abort(res)
+	}
+	return nil
+}
+
 //check that sequence num is good with log
 func buildCommit(r request, logFileName string) (fileName, message string, code int) {
 	data, _ := readFile(logFileName)
@@ -185,14 +291,6 @@ func buildCommit(r request, logFileName string) (fileName, message string, code 
 	fileName = contents[0]
 	contentArray := make([]string, r.sequenceNum)
 	seqNums := make([]bool, r.sequenceNum)
-
-	// breaks when no write is in there
-	// if len(contents[len(contents)-2]) > 0 { // detect if log is in middle of commit
-	// 	if strings.Split(contents[len(contents)-1], " ")[0] == "commit" {
-	// 		// ERROR: Already committing
-	// 		return "", "Already committing", 300
-	// 	}
-	// }
 
 	contents = contents[1:len(contents)] // bypassing file name
 	currentSeqNum := 0

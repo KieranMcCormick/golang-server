@@ -1,4 +1,4 @@
 #!/bin/bash
 
 #TODO: add the download script
-go build server.go config.go request.go fileHandler.go
+go build server.go config.go request.go fileHandler.go logging.go

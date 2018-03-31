@@ -6,7 +6,14 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 )
+
+type transaction struct {
+	commitLogLock *sync.RWMutex
+	isInProgress  bool
+	totalNumSeq   int
+}
 
 type request struct {
 	method        string
@@ -120,6 +127,8 @@ func parsePacket(conn net.Conn) {
 	case "READ":
 		handleRead(req, r, conn)
 	case "COMMIT":
+		// hackjack commit before hand
+		handleBeforeCommit(req, header)
 		handleCommit(req, conn)
 	case "ABORT":
 		handleAbort(req, conn)
@@ -160,8 +169,17 @@ func handleWrite(req request, r *bufio.Reader, conn net.Conn) {
 	//fmt.Println("data: ", data)
 	req.data = []byte(data)
 	res := logWrite(req)
+
+	// check if the transaction is in progress
 	if res.method == "ERROR" {
 		sendErrorResponse(conn, res)
+	} else if trans, ok := transList[req.transactionID]; ok && trans.isInProgress {
+		handleCommit(request{
+			method:        "COMMIT",
+			transactionID: req.transactionID,
+			sequenceNum:   trans.totalNumSeq,
+			contentLength: 0,
+		}, conn)
 	} else {
 		sendResponse(conn, res)
 	}
@@ -272,4 +290,20 @@ func constructResponse(res response) []byte {
 		resPacket += "0 0 \r\n\r\n\r\n"                    // code + length + blank
 	}
 	return []byte(resPacket)
+}
+
+func handleBeforeCommit(req request, header string) {
+	if trans, ok := transList[req.transactionID]; ok {
+		// get the lock for the commit log file
+		// write the commit packet to the log file
+		trans.commitLogLock.Lock()
+		defer trans.commitLogLock.Unlock()
+
+		logFileName := getCommitLogName(req.transactionID)
+		appendFile(logFileName, header)
+	} else {
+		// fail to get the  lock for the commit log file
+		// file IO error OR someone else is using it
+		// fmt.Println("Couldn't get the lock")
+	}
 }

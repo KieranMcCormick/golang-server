@@ -8,6 +8,7 @@ import (
 )
 
 var logLocks map[int]*sync.RWMutex
+var transList map[int]transaction
 var fileLocks map[string]*sync.RWMutex
 var createLockLock = &sync.RWMutex{}
 var createFileLock = &sync.RWMutex{}
@@ -18,6 +19,7 @@ func init() {
 	DIRECTORY = "./"
 	TIMEOUT = 6000
 	logLocks = recoverLogLocks()
+	recoverCommitLogLocks()
 	fileLocks = discoverFileLocks()
 }
 
@@ -40,8 +42,14 @@ func main() {
 			err := recoverLog(k)
 			if err != nil {
 				// something terrible happened
-				// abort(res)
+				abort(request{transactionID: k})
 			}
+		}
+	}
+
+	if len(transList) > 0 {
+		for k := range transList {
+			recoverCommitLog(k)
 		}
 	}
 

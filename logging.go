@@ -44,6 +44,10 @@ func getLogName(id int) string {
 	return ".log_" + strconv.Itoa(id)
 }
 
+func getCommitLogName(id int) string {
+	return ".log_c_" + strconv.Itoa(id)
+}
+
 func recoverLogLocks() map[int]*sync.RWMutex {
 	existingLogLocks := make(map[int]*sync.RWMutex)
 
@@ -63,6 +67,27 @@ func recoverLogLocks() map[int]*sync.RWMutex {
 	return existingLogLocks
 }
 
+func recoverCommitLogLocks() {
+	transList = make(map[int]transaction)
+
+	files, err := ioutil.ReadDir(DIRECTORY)
+	if err != nil {
+		// ERROR: error reading directory
+		return
+	}
+
+	for _, f := range files {
+		matched, err := regexp.MatchString(".log_c_", f.Name())
+		if err == nil && matched {
+			tid, _ := strconv.Atoi(f.Name()[7:])
+			transList[tid] = transaction{
+				commitLogLock: &sync.RWMutex{},
+				isInProgress:  false,
+			}
+		}
+	}
+}
+
 func getNewTransactionID() int {
 	createLockLock.Lock()
 	defer createLockLock.Unlock()
@@ -78,6 +103,11 @@ func getNewTransactionID() int {
 		}
 	}
 	logLocks[i] = &sync.RWMutex{}
+	transList[i] = transaction{
+		commitLogLock: &sync.RWMutex{},
+		isInProgress:  false,
+		totalNumSeq:   -1,
+	}
 	return i
 }
 
@@ -89,11 +119,19 @@ func logNewTransaction(r request) int {
 		// TODO:? would logLocks has index error?
 		return -1
 	}
+	trans, commitOk := transList[transactionID]
+	if commitOk == false {
+		return -1
+	}
 	lock.Lock()
+	trans.commitLogLock.Lock()
 	defer lock.Unlock()
+	defer trans.commitLogLock.Unlock()
 
 	logFileName := getLogName(transactionID)
+	commitLogFileName := getCommitLogName(transactionID)
 	createFile(logFileName)
+	createFile(commitLogFileName)
 	appendFile(logFileName, r.filename)
 
 	// Success
@@ -178,6 +216,20 @@ func logWrite(r request) response {
 	return newResponse("ERROR", r.transactionID, r.sequenceNum, 201, "")
 }
 
+func recoverCommitLog(tid int) {
+	commitLogFileName := getCommitLogName(tid)
+	data, _ := readFile(commitLogFileName)
+	req, err := parseHeader(string(data))
+	if err == nil {
+		// is in progress
+		transList[tid] = transaction{
+			commitLogLock: transList[tid].commitLogLock,
+			isInProgress:  true,
+			totalNumSeq:   req.sequenceNum,
+		}
+	}
+}
+
 func recoverLog(tid int) error {
 	logFileName := getLogName(tid)
 	data, _ := readFile(logFileName)
@@ -240,7 +292,7 @@ func recoverLog(tid int) error {
 	if contentLength > 0 {
 		// need the index
 		// delete the previous write
-
+		// not handle this case, should assume the log write is errorless
 	}
 	return nil
 }
@@ -252,7 +304,8 @@ func recoverCommit(tid, writeSize int, fileName string, logLine []string) error 
 	fileSize := getLogFileLength(logFileName)
 	if (baseSize + writeSize64) == fileSize {
 		// already commited
-		// abort(res)
+		abort(request{transactionID: tid})
+		return nil
 	} else if baseSize != fileSize {
 		// Case: committed half way
 		// solution: reset to base state
@@ -278,7 +331,7 @@ func recoverCommit(tid, writeSize int, fileName string, logLine []string) error 
 			createFile(fileName)
 		}
 		appendFile(fileName, message)
-		// abort(res)
+		abort(request{transactionID: tid})
 	}
 	return nil
 }
@@ -408,16 +461,23 @@ func commit(r request) response {
 }
 
 func abort(r request) response {
-	if lock, ok := logLocks[r.transactionID]; ok {
+	id := r.transactionID
+	if lock, ok := logLocks[id]; ok {
 		lock.Lock()
 		defer lock.Unlock()
 		//Clean up transaction
-		deleteFile(getLogName(r.transactionID))
-		delete(logLocks, r.transactionID)
-
-		// Success
-		return newResponse("ACK", r.transactionID, r.sequenceNum, 200, "")
+		deleteFile(getLogName(id))
+		delete(logLocks, id)
+		if trans, commitOk := transList[id]; commitOk {
+			transLock := trans.commitLogLock
+			transLock.Lock()
+			defer transLock.Unlock()
+			deleteFile(getCommitLogName(id))
+			delete(transList, id)
+			// Success
+			return newResponse("ACK", id, r.sequenceNum, 200, "")
+		}
 	}
 	// ERROR: Transaction does not exist
-	return newResponse("ERROR", r.transactionID, r.sequenceNum, 201, "")
+	return newResponse("ERROR", id, r.sequenceNum, 201, "")
 }

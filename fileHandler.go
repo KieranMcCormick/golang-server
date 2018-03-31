@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -199,4 +200,19 @@ func isError(err error) bool {
 	}
 
 	return (err != nil)
+}
+
+func shutdown() {
+	files, err := ioutil.ReadDir(DIRECTORY)
+	if err != nil {
+		// ERROR: error reading directory
+	} else {
+		for _, f := range files {
+			matched, err := regexp.MatchString(".log_", f.Name())
+			if err == nil && matched {
+				// fmt.Println("deleting: ", f.Name())
+				deleteFile(f.Name())
+			}
+		}
+	}
 }

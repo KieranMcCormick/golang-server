@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 )
 
 var logLocks map[int]*sync.RWMutex
@@ -60,6 +62,15 @@ func main() {
 		return
 	}
 
+	signalChannel := make(chan os.Signal, 1)
+	signal.Notify(signalChannel, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	go func() {
+		sig := <-signalChannel
+		fmt.Println(sig.String())
+		shutdown()
+		os.Exit(0)
+	}()
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -74,5 +85,4 @@ func main() {
 // worker
 func handleConnection(conn net.Conn) {
 	parsePacket(conn)
-	conn.Close()
 }

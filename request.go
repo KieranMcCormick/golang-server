@@ -96,44 +96,47 @@ func parseHeader(header string) (request, error) {
 // helper to parse to stuff
 func parsePacket(conn net.Conn) {
 	var req request
-	var err error
-	r := bufio.NewReader(conn)
-	header, err := r.ReadString('\n')
-	if err != nil {
-		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
-		sendErrorResponse(conn, res)
-		return
-	}
-	req, err = parseHeader(header)
+	for {
+		r := bufio.NewReader(conn)
+		header, err := r.ReadString('\n')
+		if err != nil {
+			res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
+			sendErrorResponse(conn, res)
+			return
+		}
+		req, err = parseHeader(header)
 
-	if err != nil {
-		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
-		sendErrorResponse(conn, res)
-		return
-	}
+		if err != nil {
+			res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
+			sendErrorResponse(conn, res)
+			return
+		}
 
-	if req.method == "WRITE" && req.sequenceNum < 1 {
-		res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
-		sendErrorResponse(conn, res)
-		return
-	}
+		if req.method == "WRITE" && req.sequenceNum < 1 {
+			res := newResponse("ERROR", req.transactionID, req.sequenceNum, 202, "")
+			sendErrorResponse(conn, res)
+			return
+		}
 
-	switch req.method {
-	case "NEW_TXN":
-		res := handleNewTransaction(req, r)
-		conn.Write(constructResponse(res))
-	case "WRITE":
-		handleWrite(req, r, conn)
-	case "READ":
-		handleRead(req, r, conn)
-	case "COMMIT":
-		// hackjack commit before hand
-		handleBeforeCommit(req, header)
-		handleCommit(req, conn)
-	case "ABORT":
-		handleAbort(req, conn)
-	default:
-		sendErrorResponse(conn, response{errorCode: 202})
+		switch req.method {
+		case "NEW_TXN":
+			res := handleNewTransaction(req, r)
+			conn.Write(constructResponse(res))
+		case "WRITE":
+			handleWrite(req, r, conn)
+		case "READ":
+			handleRead(req, r, conn)
+		case "COMMIT":
+			// hackjack commit before hand
+			handleBeforeCommit(req, header)
+			handleCommit(req, conn)
+		case "ABORT":
+			handleAbort(req, conn)
+		default:
+			sendErrorResponse(conn, response{errorCode: 202})
+		}
+		// dont break the connection if not needed
+		break
 	}
 }
 

@@ -188,7 +188,6 @@ func logWrite(r request) response {
 				checkSeqStatus := checkIfSeqExist(logFileName, r.sequenceNum)
 				if checkSeqStatus == 208 {
 					// ERROR: Sequence number already written to log
-					fmt.Println("some error: ", checkSeqStatus)
 					return newResponse("ERROR", r.transactionID, r.sequenceNum, checkSeqStatus, "")
 				}
 
@@ -220,11 +219,13 @@ func recoverCommitLog(tid int) {
 	commitLogFileName := getCommitLogName(tid)
 	data, _ := readFile(commitLogFileName)
 	req, err := parseHeader(string(data))
+	isFinished := strings.TrimRight(req.method, "\r\n") == "Done"
 	if err == nil {
 		// is in progress
 		transList[tid] = transaction{
 			commitLogLock: transList[tid].commitLogLock,
-			isInProgress:  true,
+			isInProgress:  !isFinished,
+			isFinished:    isFinished,
 			totalNumSeq:   req.sequenceNum,
 		}
 	}
@@ -442,15 +443,23 @@ func commit(r request) response {
 
 		appendFile(logFileName, "\ncommit "+strconv.Itoa(r.sequenceNum)+" "+strconv.FormatInt(getLogFileLength(logFileName), 10))
 
+		// truncate file as deleting then insert done
+		commitLogFileName := getCommitLogName(r.transactionID)
+		err := os.Truncate(commitLogFileName, 0)
+		if err != nil {
+			return newResponse("ERROR", r.transactionID, r.sequenceNum, code, message)
+		}
+		appendFile(commitLogFileName, "Done")
+
 		if !doesFileExist(fileName) {
 			createFile(fileName)
 		}
 		appendFile(fileName, message)
 
-		//Need to unlock before abort so log file can be deleted
+		// Need to unlock before abort so log file can be deleted
 		lock.Unlock()
 
-		//Clean up transaction
+		// Clean up transaction
 		res := abort(r)
 
 		// Success or Fail
@@ -465,18 +474,10 @@ func abort(r request) response {
 	if lock, ok := logLocks[id]; ok {
 		lock.Lock()
 		defer lock.Unlock()
-		//Clean up transaction
+		// Clean up transaction
 		deleteFile(getLogName(id))
 		delete(logLocks, id)
-		if trans, commitOk := transList[id]; commitOk {
-			transLock := trans.commitLogLock
-			transLock.Lock()
-			defer transLock.Unlock()
-			deleteFile(getCommitLogName(id))
-			delete(transList, id)
-			// Success
-			return newResponse("ACK", id, r.sequenceNum, 200, "")
-		}
+		return newResponse("ACK", id, r.sequenceNum, 200, "")
 	}
 	// ERROR: Transaction does not exist
 	return newResponse("ERROR", id, r.sequenceNum, 201, "")

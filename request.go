@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 type transaction struct {
 	commitLogLock *sync.RWMutex
 	isInProgress  bool
+	isFinished    bool
 	totalNumSeq   int
 }
 
@@ -128,8 +130,17 @@ func parsePacket(conn net.Conn) {
 			handleRead(req, r, conn)
 		case "COMMIT":
 			// hackjack commit before hand
-			handleBeforeCommit(req, header)
-			handleCommit(req, conn)
+			isFinished := handleBeforeCommit(req, header)
+			if isFinished {
+				// Commit the file already
+				sendResponse(conn, response{
+					method:        "ACK",
+					transactionID: req.transactionID,
+					sequenceNum:   req.sequenceNum,
+				})
+			} else {
+				handleCommit(req, conn)
+			}
 		case "ABORT":
 			handleAbort(req, conn)
 		default:
@@ -138,6 +149,7 @@ func parsePacket(conn net.Conn) {
 		// dont break the connection if not needed
 		break
 	}
+	conn.Close()
 }
 
 func handleNewTransaction(req request, r *bufio.Reader) response {
@@ -243,7 +255,7 @@ func sendErrorResponse(conn net.Conn, res response) {
 		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 201, "Invalid transaction ID")
 		sendResponse(conn, res)
 	case 202:
-		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 202, "Invalid Invalid operation")
+		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 202, "Invalid operation")
 		sendResponse(conn, res)
 	case 205:
 		res = newResponse("ERROR", res.transactionID, res.sequenceNum, 205, "File I/O error")
@@ -295,18 +307,25 @@ func constructResponse(res response) []byte {
 	return []byte(resPacket)
 }
 
-func handleBeforeCommit(req request, header string) {
+func handleBeforeCommit(req request, header string) bool {
 	if trans, ok := transList[req.transactionID]; ok {
 		// get the lock for the commit log file
 		// write the commit packet to the log file
 		trans.commitLogLock.Lock()
 		defer trans.commitLogLock.Unlock()
 
+		if trans.isFinished {
+			return true
+		}
+
 		logFileName := getCommitLogName(req.transactionID)
+		os.Truncate(logFileName, 0)
 		appendFile(logFileName, header)
+		return false
 	} else {
 		// fail to get the  lock for the commit log file
 		// file IO error OR someone else is using it
 		// fmt.Println("Couldn't get the lock")
+		return false
 	}
 }

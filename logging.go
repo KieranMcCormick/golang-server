@@ -305,7 +305,7 @@ func recoverCommit(tid, writeSize int, fileName string, logLine []string) error 
 	fileSize := getLogFileLength(logFileName)
 	if (baseSize + writeSize64) == fileSize {
 		// already commited
-		abort(request{transactionID: tid})
+		abort(request{transactionID: tid}, false)
 		return nil
 	} else if baseSize != fileSize {
 		// Case: committed half way
@@ -332,7 +332,7 @@ func recoverCommit(tid, writeSize int, fileName string, logLine []string) error 
 			createFile(fileName)
 		}
 		appendFile(fileName, message)
-		abort(request{transactionID: tid})
+		abort(request{transactionID: tid}, false)
 	}
 	return nil
 }
@@ -460,7 +460,7 @@ func commit(r request) response {
 		lock.Unlock()
 
 		// Clean up transaction
-		res := abort(r)
+		res := abort(r, false)
 
 		// Success or Fail
 		return res
@@ -469,7 +469,7 @@ func commit(r request) response {
 	return newResponse("ERROR", r.transactionID, r.sequenceNum, 201, "")
 }
 
-func abort(r request) response {
+func abort(r request, cleanup bool) response {
 	id := r.transactionID
 	if lock, ok := logLocks[id]; ok {
 		lock.Lock()
@@ -477,6 +477,14 @@ func abort(r request) response {
 		// Clean up transaction
 		deleteFile(getLogName(id))
 		delete(logLocks, id)
+		if cleanup {
+			if trans, ok := transList[id]; ok {
+				trans.commitLogLock.Lock()
+				defer trans.commitLogLock.Unlock()
+				deleteFile(getCommitLogName(id))
+				delete(transList, id)
+			}
+		}
 		return newResponse("ACK", id, r.sequenceNum, 200, "")
 	}
 	// ERROR: Transaction does not exist

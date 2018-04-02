@@ -44,7 +44,7 @@ func main() {
 			err := recoverLog(k)
 			if err != nil {
 				// something terrible happened
-				abort(request{transactionID: k})
+				abort(request{transactionID: k}, false)
 			}
 		}
 	}

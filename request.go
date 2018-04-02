@@ -241,7 +241,7 @@ func handleCommit(req request, conn net.Conn) {
 }
 
 func handleAbort(req request, conn net.Conn) {
-	res := abort(req)
+	res := abort(req, true)
 	if res.method == "ERROR" {
 		sendErrorResponse(conn, res)
 	} else {

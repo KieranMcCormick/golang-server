@@ -11,3 +11,7 @@ CMPT 431 Assignment 4
 ### Remember to give permission to run these scripts if you cannot run them
 
 ```chomod +x build.sh run.sh```
+
+### To gracefully exit the server, press
+
+```ctrl + c```

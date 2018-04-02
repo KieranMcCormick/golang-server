@@ -271,7 +271,7 @@ func recoverLog(tid int) error {
 				// end of string ?
 				logLine := strings.Split(string(s), " ")
 				if logLine[0] == "commit" {
-					err := recoverCommit(tid, contentLength, fileName, logLine)
+					err := recoverCommit(tid, totalLength, fileName, logLine)
 					return err
 				}
 				// check commit here parse seq / file size
@@ -303,13 +303,18 @@ func recoverCommit(tid, writeSize int, fileName string, logLine []string) error 
 	writeSize64 := int64(writeSize)
 	baseSize, _ := strconv.ParseInt(logLine[2], 10, 64)
 	fileSize := getLogFileLength(logFileName)
+	// fmt.Println(baseSize)
+	// fmt.Println(writeSize64)
+	// fmt.Println(fileSize)
 	if (baseSize + writeSize64) == fileSize {
 		// already commited
+		// fmt.Println("already commited")
 		abort(request{transactionID: tid}, false)
 		return nil
 	} else if baseSize != fileSize {
 		// Case: committed half way
 		// solution: reset to base state
+		// fmt.Println("different size")
 		err := os.Truncate(getFullPath(fileName), baseSize)
 		if err != nil {
 			return err
@@ -317,6 +322,7 @@ func recoverCommit(tid, writeSize int, fileName string, logLine []string) error 
 	}
 	// Case: wrote to log file but fail to write to actual file
 	length, _ := strconv.Atoi(logLine[1])
+	// fmt.Println("number of seq is ", length)
 	res := request{
 		method:        "COMMIT",
 		transactionID: tid,
@@ -326,11 +332,13 @@ func recoverCommit(tid, writeSize int, fileName string, logLine []string) error 
 	fileName, message, code := buildCommit(res, logFileName)
 	if code == 207 {
 		// ignore because it's resend
+		// fmt.Println("need resend")
 		return nil
 	} else if code == 200 {
 		if !doesFileExist(fileName) {
 			createFile(fileName)
 		}
+		// fmt.Println("appedning")
 		appendFile(fileName, message)
 		abort(request{transactionID: tid}, false)
 	}
@@ -392,6 +400,9 @@ func buildCommit(r request, logFileName string) (fileName, message string, code 
 					break
 				}
 				logLine := strings.Split(string(s), " ")
+				if logLine[0] == "commit" {
+					continue
+				}
 
 				currentSeqNum, _ = strconv.Atoi(string(logLine[0]))
 				currentSeqNum--

@@ -83,6 +83,7 @@ func recoverCommitLogLocks() {
 			transList[tid] = transaction{
 				commitLogLock: &sync.RWMutex{},
 				isInProgress:  false,
+				isFinished:    false,
 			}
 		}
 	}
@@ -487,13 +488,11 @@ func abort(r request, cleanup bool) response {
 		defer lock.Unlock()
 		// Clean up transaction
 		deleteFile(getLogName(id))
-		delete(logLocks, id)
 		if cleanup {
 			if trans, ok := transList[id]; ok {
 				trans.commitLogLock.Lock()
 				defer trans.commitLogLock.Unlock()
 				deleteFile(getCommitLogName(id))
-				delete(transList, id)
 			}
 		}
 		return newResponse("ACK", id, r.sequenceNum, 200, "")

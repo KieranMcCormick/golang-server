@@ -286,7 +286,9 @@ func sendReACK(conn net.Conn, res response) {
 }
 
 func sendResponse(conn net.Conn, res response) {
-	conn.Write(constructResponse(res))
+	resContent := constructResponse(res)
+	// fmt.Println("Sending: ", resContent)
+	conn.Write(resContent)
 }
 
 func constructResponse(res response) []byte {
@@ -296,8 +298,8 @@ func constructResponse(res response) []byte {
 		resPacket += strconv.Itoa(res.transactionID) + " "
 		resPacket += strconv.Itoa(res.sequenceNum) + " "
 		resPacket += strconv.Itoa(res.errorCode) + " "
-		resPacket += strconv.Itoa(len([]byte(res.reason))) + " "
-		resPacket += res.reason + "\r\n\r\n"
+		resPacket += strconv.Itoa(len([]byte(res.reason))) + " \r\n\r\n"
+		resPacket += res.reason
 	} else {
 		// success
 		resPacket += strconv.Itoa(res.transactionID) + " " // id
